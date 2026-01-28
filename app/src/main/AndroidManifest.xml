@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 
+        REQUIRED PERMISSIONS:
+        1. INTERNET - To detect browser navigation
+        2. FOREGROUND_SERVICE - For the blocking overlay
+        3. SYSTEM_ALERT_WINDOW - To show blocking popup over other apps
+        4. BIND_ACCESSIBILITY_SERVICE - For Accessibility Service (declared in service)
+    -->
+    
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    
+    <!-- Camera permission for push-up counter -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PushFirst"
+        tools:targetApi="31">
+        
+        <!-- Main Activity -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:theme="@style/Theme.PushFirst">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Push-up Counter Activity -->
+        <activity
+            android:name=".PushupCounterActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PushFirst"
+            android:screenOrientation="portrait" />
+
+        <!-- 
+            ACCESSIBILITY SERVICE CONFIGURATION:
+            This service monitors browser navigation to detect adult websites.
+            Users MUST enable this in Settings > Accessibility > Push First
+        -->
+        <service
+            android:name=".BrowserDetectionService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+        <!-- 
+            BLOCKING OVERLAY SERVICE:
+            Shows full-screen blocking popup when adult site is detected
+        -->
+        <service
+            android:name=".BlockingOverlayService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Blocking overlay service" />
+        </service>
+
+    </application>
+
+</manifest>

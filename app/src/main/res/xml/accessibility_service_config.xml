@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Accessibility Service Configuration
+    
+    This configures what the Accessibility Service can monitor:
+    - packageNames: Which apps to monitor (empty = all apps)
+    - eventTypes: What events to listen for (TYPE_WINDOW_STATE_CHANGED = when windows open/change)
+    - feedbackType: How to provide feedback (none, since we're just monitoring)
+    - notificationTimeout: How often to check (100ms for responsiveness)
+    
+    IMPORTANT: Users must manually enable this service in:
+    Settings > Accessibility > Push First > Enable
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/accessibility_service_description"
+    android:packageNames="com.android.chrome,com.chrome.browser,com.microsoft.emmx,com.brave.browser,com.opera.browser,org.mozilla.firefox,com.samsung.android.sbrowser"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewTextChanged|typeViewScrolled"
+    android:accessibilityFlags="flagDefault|flagIncludeNotImportantViews|flagRetrieveInteractiveWindows"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="100"
+    android:canRetrieveWindowContent="true"
+    android:canRequestFilterKeyEvents="true"
+    android:settingsActivity="com.pushfirst.demo.MainActivity" />

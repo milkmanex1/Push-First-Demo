@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Push First</string>
+    <string name="accessibility_service_description">Monitors browser navigation to detect adult websites and show blocking popups. This is a demo app for marketing purposes.</string>
+</resources>
