@@ -7,6 +7,10 @@ import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
+import android.text.SpannableString
+import android.text.Spannable
+import android.text.style.StyleSpan
+import android.text.style.ForegroundColorSpan
 import android.view.*
 import android.widget.Button
 import android.widget.FrameLayout
@@ -39,6 +43,7 @@ class BlockingOverlayService : Service() {
     private var windowManager: WindowManager? = null
     private var isOverlayShowing = false
     private var browserPackage: String? = null
+    private var currentBlockedDomain: String? = null // Track current blocked domain to avoid unnecessary recreation
 
     companion object {
         private const val TAG = "BlockingOverlayService"
@@ -67,6 +72,13 @@ class BlockingOverlayService : Service() {
         val blockedDomain = intent?.getStringExtra("blocked_domain") ?: "that site"
         browserPackage = intent?.getStringExtra("browser_package")
         android.util.Log.d(TAG, "onStartCommand called with domain: $blockedDomain, browser: $browserPackage")
+        
+        // Only show overlay if it's not already showing for this domain
+        if (isOverlayShowing && currentBlockedDomain == blockedDomain) {
+            android.util.Log.d(TAG, "Overlay already showing for $blockedDomain, skipping recreation")
+            return START_STICKY
+        }
+        
         showBlockingOverlay(blockedDomain)
         return START_STICKY // Keep service running even if killed
     }
@@ -75,12 +87,16 @@ class BlockingOverlayService : Service() {
      * Create and show the blocking overlay window
      */
     private fun showBlockingOverlay(blockedDomain: String) {
-        if (isOverlayShowing) {
-            android.util.Log.d(TAG, "Overlay already showing, skipping")
+        android.util.Log.d(TAG, "Showing blocking overlay for domain: $blockedDomain")
+        
+        // Remove any existing overlay first (only if showing different domain or state inconsistent)
+        if (isOverlayShowing && currentBlockedDomain != blockedDomain) {
+            android.util.Log.d(TAG, "Domain changed from $currentBlockedDomain to $blockedDomain, removing old overlay")
+            removeOverlay()
+        } else if (isOverlayShowing) {
+            android.util.Log.d(TAG, "Overlay already showing for $blockedDomain, skipping")
             return
         }
-
-        android.util.Log.d(TAG, "Showing blocking overlay for domain: $blockedDomain")
         
         // Check overlay permission first
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -91,9 +107,6 @@ class BlockingOverlayService : Service() {
                 return
             }
         }
-        
-        // Remove existing overlay if any
-        removeOverlay()
 
         try {
             // Create overlay window parameters
@@ -142,7 +155,8 @@ class BlockingOverlayService : Service() {
             if (wm != null) {
                 wm.addView(overlayView, params)
                 isOverlayShowing = true
-                android.util.Log.d(TAG, "✅ Overlay successfully added to window manager")
+                currentBlockedDomain = blockedDomain // Track the current domain
+                android.util.Log.d(TAG, "✅ Overlay successfully added to window manager for domain: $blockedDomain")
             } else {
                 android.util.Log.e(TAG, "❌ WindowManager is null!")
                 stopSelf()
@@ -205,7 +219,7 @@ class BlockingOverlayService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, 0, 0, 24)
+                setMargins(0, 0, 0, 40)
             }
         }
         
@@ -218,20 +232,43 @@ class BlockingOverlayService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, 0, 0, 16)
+                setMargins(0, 0, 0, 32)
             }
         }
         
         val domainText = TextView(applicationContext).apply {
-            text = "You tried to visit: $blockedDomain"
+            val fullText = "You tried to visit: $blockedDomain"
+            val spannableString = SpannableString(fullText)
+            
+            // Find the domain name part and make it bold and brighter color
+            val domainStartIndex = fullText.indexOf(blockedDomain)
+            val domainEndIndex = domainStartIndex + blockedDomain.length
+            
+            // Make domain name bold
+            spannableString.setSpan(
+                StyleSpan(android.graphics.Typeface.BOLD),
+                domainStartIndex,
+                domainEndIndex,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            
+            // Change domain name color to a brighter white/cyan for emphasis
+            spannableString.setSpan(
+                ForegroundColorSpan(0xFF4FC3F7.toInt()), // Light blue/cyan color
+                domainStartIndex,
+                domainEndIndex,
+                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+            
+            text = spannableString
             textSize = 16f
             gravity = android.view.Gravity.CENTER
-            setTextColor(0xFF999999.toInt()) // Gray color
+            setTextColor(0xFF999999.toInt()) // Gray color for the rest of the text
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, 0, 0, 48)
+                setMargins(0, 0, 0, 56)
             }
         }
         
@@ -289,21 +326,26 @@ class BlockingOverlayService : Service() {
 
     /**
      * Remove the overlay window
+     * Always tries to remove overlay, even if flag says it's not showing (handles state inconsistencies)
      */
     private fun removeOverlay() {
-        if (!isOverlayShowing) return
-        
         try {
             overlayView?.let { view ->
                 android.util.Log.d(TAG, "Removing overlay")
                 windowManager?.removeView(view)
                 overlayView = null
                 isOverlayShowing = false
+                currentBlockedDomain = null // Clear tracked domain
+            } ?: run {
+                // No overlay view, but reset flag anyway
+                isOverlayShowing = false
+                currentBlockedDomain = null
             }
         } catch (e: Exception) {
             android.util.Log.e(TAG, "Error removing overlay: ${e.message}", e)
             overlayView = null
             isOverlayShowing = false
+            currentBlockedDomain = null
         }
     }
 

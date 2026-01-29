@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
             )
 
             Text(
-                text = "Marketing Demo App",
+                text = "Turn gooner energy into gains",
                 fontSize = 18.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 48.dp)

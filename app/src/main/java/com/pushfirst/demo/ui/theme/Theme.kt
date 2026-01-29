@@ -10,6 +10,7 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -18,7 +19,13 @@ import androidx.core.view.WindowCompat
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,
     secondary = PurpleGrey80,
-    tertiary = Pink80
+    tertiary = Pink80,
+    background = Color(0xFF000000), // Pure black background
+    surface = Color(0xFF121212), // Dark gray for surfaces
+    surfaceVariant = Color(0xFF1E1E1E), // Slightly lighter for variant surfaces
+    onBackground = Color(0xFFFFFFFF), // White text on black
+    onSurface = Color(0xFFFFFFFF), // White text on surfaces
+    onSurfaceVariant = Color(0xFFCCCCCC) // Light gray for variant text
 )
 
 private val LightColorScheme = lightColorScheme(
@@ -29,8 +36,8 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun PushFirstTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    darkTheme: Boolean = true, // Force dark theme (black background)
+    dynamicColor: Boolean = false, // Disable dynamic colors to use custom black theme
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

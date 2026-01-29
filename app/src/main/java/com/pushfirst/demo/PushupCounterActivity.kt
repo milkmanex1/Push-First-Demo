@@ -1,8 +1,10 @@
 package com.pushfirst.demo
 
 import android.Manifest
+import android.app.ActivityManager
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -136,37 +138,41 @@ class PushupCounterActivity : ComponentActivity() {
 
     /**
      * Return to the browser app after completing push-ups
+     * Tries to bring browser back to foreground without resetting its state
      */
     fun returnToBrowser() {
         browserPackage?.let { packageName ->
             try {
-                // Launch the browser app
+                // Try to launch browser with flags that bring it to front without resetting
                 val intent = packageManager.getLaunchIntentForPackage(packageName)
                 if (intent != null) {
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    // Use flags that bring app to front without clearing its state
+                    intent.addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
                     startActivity(intent)
-                    finish()
-                } else {
-                    // Fallback: try to launch browser using ACTION_VIEW
-                    val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
-                        setPackage(packageName)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    if (fallbackIntent.resolveActivity(packageManager) != null) {
-                        startActivity(fallbackIntent)
-                        finish()
-                    } else {
-                        // Last resort: just finish
-                        finish()
-                    }
                 }
+                
+                // Move our task to back to ensure browser comes to front
+                moveTaskToBack(true)
             } catch (e: Exception) {
                 android.util.Log.e("PushupCounterActivity", "Error returning to browser: ${e.message}", e)
-                finish()
+                // Fallback: move to back
+                try {
+                    moveTaskToBack(true)
+                } catch (e2: Exception) {
+                    finish()
+                }
             }
         } ?: run {
-            // No browser package, just finish
-            finish()
+            // No browser package - just move to back
+            try {
+                moveTaskToBack(true)
+            } catch (e: Exception) {
+                finish()
+            }
         }
     }
 

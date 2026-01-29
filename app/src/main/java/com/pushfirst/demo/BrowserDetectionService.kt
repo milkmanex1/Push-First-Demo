@@ -36,6 +36,8 @@ class BrowserDetectionService : AccessibilityService() {
     private var lastCheckedUrl: String? = null
     private var lastCheckTime: Long = 0
     private var currentBrowserPackage: String? = null
+    private var lastKnownAdultDomain: String? = null // Track if we're on an adult site
+    private var lastBlockTriggerTime: Long = 0 // Track when we last triggered blocking
     private val handler = Handler(Looper.getMainLooper())
     private val debounceDelay = 300L // 300ms debounce (reduced for faster detection)
     private var isMonitoring = false
@@ -76,7 +78,11 @@ class BrowserDetectionService : AccessibilityService() {
             "keezmovies.com",
             "www.keezmovies.com",
             "porn.com",
-            "www.porn.com"
+            "www.porn.com",
+            "spankbang.com",
+            "www.spankbang.com",
+            "cornhub.website",
+            "www.cornhub.website"
         )
 
         /**
@@ -112,12 +118,32 @@ class BrowserDetectionService : AccessibilityService() {
         // Process window state changes, content changes, and window content changes
         val shouldProcess = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-                event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+                event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED
 
         if (shouldProcess) {
-            Log.d(TAG, "Browser event detected: package=$packageName, type=${event.eventType}")
             // Store the browser package name for later use
             currentBrowserPackage = packageName
+            
+            // Try to extract URL from the event first (faster than traversing hierarchy)
+            val urlFromEvent = extractUrlFromEvent(event)
+            if (urlFromEvent != null) {
+                // Skip Chrome internal pages
+                if (!urlFromEvent.contains("chrome://") && 
+                    !urlFromEvent.contains("chrome-error://") &&
+                    !urlFromEvent.contains("data:text/html") &&
+                    !urlFromEvent.contains("about:") &&
+                    urlFromEvent != "google.com" &&
+                    !urlFromEvent.contains("google.com/search")) {
+                    // Only process if URL changed
+                    if (urlFromEvent != lastCheckedUrl) {
+                        lastCheckedUrl = urlFromEvent
+                        Log.d(TAG, "✅ URL changed to: $urlFromEvent")
+                        checkAndBlockIfAdultSite(urlFromEvent)
+                    }
+                    return
+                }
+            }
             
             // Trigger immediate check (monitoring will also catch it)
             handler.postDelayed({
@@ -129,15 +155,30 @@ class BrowserDetectionService : AccessibilityService() {
     /**
      * Continuously check the current URL from the active window
      * This method polls the address bar to catch URL changes
+     * Also checks if unlock has expired while on an adult site
      */
     private fun checkCurrentUrl() {
         try {
-            val rootNode = rootInActiveWindow ?: return
+            val rootNode = rootInActiveWindow
+            if (rootNode == null) {
+                Log.d(TAG, "No root node available")
+                return
+            }
             
-            // Extract URL from view hierarchy
-            val url = extractUrlFromViewHierarchy(rootNode)
+            // Try multiple extraction methods
+            var url = extractUrlFromViewHierarchy(rootNode)
             
-            if (url != null && url != lastCheckedUrl) {
+            // Fallback: Try extracting from all text nodes if EditText method failed
+            if (url == null) {
+                url = extractUrlFromAllTextNodes(rootNode)
+            }
+            
+            // Fallback: Try extracting from window title/content description
+            if (url == null) {
+                url = extractUrlFromWindowInfo(rootNode)
+            }
+            
+            if (url != null) {
                 // Skip Chrome's internal pages and error pages
                 if (url.contains("chrome://") || 
                     url.contains("chrome-error://") ||
@@ -146,15 +187,33 @@ class BrowserDetectionService : AccessibilityService() {
                     url == "google.com" || // Skip Google search page
                     url.contains("google.com/search")) {
                     Log.d(TAG, "Skipping Chrome internal page: $url")
+                    // Clear adult domain tracking if we're on a non-adult page
+                    if (lastKnownAdultDomain != null) {
+                        lastKnownAdultDomain = null
+                    }
                     return
                 }
                 
-                lastCheckedUrl = url
-                Log.d(TAG, "✅ Detected browser navigation to: $url")
+                // Check if URL changed
+                val urlChanged = url != lastCheckedUrl
+                if (urlChanged) {
+                    lastCheckedUrl = url
+                    Log.d(TAG, "✅ Detected browser navigation to: $url")
+                }
+                
+                // Always check current URL against adult sites
+                // This handles both new navigations and unlock expiration cases
                 checkAndBlockIfAdultSite(url)
+            } else {
+                // URL is null - clear adult domain tracking if we can't detect URL
+                // This prevents false positives when URL extraction fails
+                if (lastKnownAdultDomain != null) {
+                    lastKnownAdultDomain = null
+                }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking current URL: ${e.message}")
+            Log.e(TAG, "Error checking current URL: ${e.message}", e)
+            e.printStackTrace()
         }
     }
 
@@ -187,7 +246,6 @@ class BrowserDetectionService : AccessibilityService() {
             val text = textItem.toString()
             val url = extractUrlFromText(text)
             if (url != null) {
-                Log.d(TAG, "Found URL from event text: $url")
                 return url
             }
         }
@@ -196,7 +254,6 @@ class BrowserDetectionService : AccessibilityService() {
         val contentDescription = event.contentDescription?.toString() ?: ""
         val urlFromDesc = extractUrlFromText(contentDescription)
         if (urlFromDesc != null) {
-            Log.d(TAG, "Found URL from content description: $urlFromDesc")
             return urlFromDesc
         }
 
@@ -205,7 +262,6 @@ class BrowserDetectionService : AccessibilityService() {
         val rootNode = rootInActiveWindow ?: return null
         val urlFromHierarchy = extractUrlFromViewHierarchy(rootNode)
         if (urlFromHierarchy != null) {
-            Log.d(TAG, "Found URL from view hierarchy: $urlFromHierarchy")
             return urlFromHierarchy
         }
 
@@ -216,12 +272,15 @@ class BrowserDetectionService : AccessibilityService() {
      * Traverse the view hierarchy to find the URL/address bar
      * Chrome's address bar can be found by searching for EditText views
      * with URL-like content or specific class names
+     * 
+     * IMPORTANT: Only checks the address bar for URLs with http:// or https:// protocol.
+     * This ensures we only detect actual navigation, not search results or page content.
      */
     private fun extractUrlFromViewHierarchy(rootNode: AccessibilityNodeInfo?): String? {
         if (rootNode == null) return null
 
         try {
-            // Method 1: Search for EditText nodes (address bar is typically an EditText)
+            // Search for EditText nodes (address bar is typically an EditText)
             val editTextNodes = mutableListOf<AccessibilityNodeInfo>()
             collectEditTextNodes(rootNode, editTextNodes)
 
@@ -230,58 +289,41 @@ class BrowserDetectionService : AccessibilityService() {
                 val text = node.text?.toString() ?: ""
                 val contentDesc = node.contentDescription?.toString() ?: ""
                 
-                // Log for debugging
-                if (text.isNotEmpty() || contentDesc.isNotEmpty()) {
-                    Log.d(TAG, "Found EditText - text: '$text', desc: '$contentDesc'")
-                }
-                
-                // Check if this looks like a URL bar (contains http/https or domain pattern)
-                val combinedText = "$text $contentDesc"
-                
-                // Check for full URLs
+                // Check text for URLs with protocol
                 if (text.contains("http://") || text.contains("https://")) {
                     val urlPattern = Regex("https?://([^/\\s?]+)")
                     val match = urlPattern.find(text)
                     val domain = match?.groupValues?.get(1)?.lowercase()
                     if (domain != null && !domain.contains("chrome") && !domain.contains("google")) {
-                        Log.d(TAG, "Found URL from EditText: $domain")
                         return domain.removePrefix("www.")
                     }
                 }
                 
-                // Check for domain patterns
-                val url = extractUrlFromText(combinedText)
-                if (url != null && !url.contains("chrome") && !url.contains("google")) {
-                    Log.d(TAG, "Found domain from EditText: $url")
-                    return url
+                // Check content description for URLs with protocol
+                if (contentDesc.contains("http://") || contentDesc.contains("https://")) {
+                    val urlPattern = Regex("https?://([^/\\s?]+)")
+                    val match = urlPattern.find(contentDesc)
+                    val domain = match?.groupValues?.get(1)?.lowercase()
+                    if (domain != null && !domain.contains("chrome") && !domain.contains("google")) {
+                        return domain.removePrefix("www.")
+                    }
                 }
-            }
-
-            // Method 2: Search all nodes for URL patterns (fallback)
-            val allText = StringBuilder()
-            collectAllText(rootNode, allText)
-            val fullText = allText.toString()
-            
-            // Extract URL from all text
-            val url = extractUrlFromText(fullText)
-            if (url != null && !url.contains("chrome") && !url.contains("google")) {
-                Log.d(TAG, "Found domain from all text: $url")
-                return url
-            }
-            
-            // Method 3: Look for specific Chrome address bar hints
-            // Chrome's address bar might have hints like "Search Google or type a URL"
-            // But we want the actual URL, so look for nodes with URL patterns
-            val urlPattern = Regex("https?://([^/\\s?]+)")
-            val matches = urlPattern.findAll(fullText)
-            for (match in matches) {
-                val domain = match.groupValues[1].lowercase()
-                if (!domain.contains("chrome") && 
-                    !domain.contains("google.com") && 
-                    !domain.contains("data:") &&
-                    domain.contains(".")) {
-                    Log.d(TAG, "Found domain from pattern matching: $domain")
-                    return domain.removePrefix("www.")
+                
+                // Check for domain patterns without protocol (address bar often shows just domain)
+                // Only check if text is short (likely address bar, not page content)
+                if (text.length < 100 && !text.contains(" ") && !text.contains("\n")) {
+                    val domainPattern = Regex("([a-zA-Z0-9][a-zA-Z0-9-]*\\.(com|net|org|io|co|tv|xxx|site|website))")
+                    val match = domainPattern.find(text)
+                    if (match != null) {
+                        val domain = match.value.lowercase()
+                        // Skip Chrome internal and Google domains
+                        if (!domain.contains("chrome") && 
+                            !domain.contains("google") &&
+                            !domain.contains("localhost") &&
+                            !domain.startsWith("www.google")) {
+                            return domain.removePrefix("www.")
+                        }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -290,17 +332,92 @@ class BrowserDetectionService : AccessibilityService() {
 
         return null
     }
+    
+    /**
+     * Extract URL from all text nodes in the hierarchy (fallback method)
+     * This is less precise but can catch URLs that aren't in EditText fields
+     */
+    private fun extractUrlFromAllTextNodes(rootNode: AccessibilityNodeInfo?): String? {
+        if (rootNode == null) return null
+        
+        try {
+            val allText = StringBuilder()
+            collectAllText(rootNode, allText)
+            val fullText = allText.toString()
+            
+                if (fullText.isNotEmpty()) {
+                // Look for URLs with protocol
+                val urlPattern = Regex("https?://([^/\\s?]+)")
+                val matches = urlPattern.findAll(fullText)
+                
+                for (match in matches) {
+                    val domain = match.groupValues[1].lowercase()
+                    // Skip Chrome internal domains and Google
+                    if (!domain.contains("chrome") && 
+                        !domain.contains("google") &&
+                        !domain.contains("localhost") &&
+                        !domain.contains("127.0.0.1")) {
+                        return domain.removePrefix("www.")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error extracting URL from all text nodes: ${e.message}", e)
+        }
+        
+        return null
+    }
+    
+    /**
+     * Extract URL from window info (title, content description)
+     */
+    private fun extractUrlFromWindowInfo(rootNode: AccessibilityNodeInfo?): String? {
+        if (rootNode == null) return null
+        
+        try {
+            // Check window title/content description
+            val text = rootNode.text?.toString() ?: ""
+            val contentDesc = rootNode.contentDescription?.toString() ?: ""
+            
+            // Try extracting from text
+            val urlFromText = extractUrlFromText(text)
+            if (urlFromText != null && !urlFromText.contains("chrome") && !urlFromText.contains("google")) {
+                return urlFromText
+            }
+            
+            // Try extracting from content description
+            val urlFromDesc = extractUrlFromText(contentDesc)
+            if (urlFromDesc != null && !urlFromDesc.contains("chrome") && !urlFromDesc.contains("google")) {
+                return urlFromDesc
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error extracting URL from window info: ${e.message}", e)
+        }
+        
+        return null
+    }
 
     /**
      * Recursively collect all EditText nodes from the view hierarchy
+     * Also collects nodes that might be address bars based on class name or content description
      */
     private fun collectEditTextNodes(node: AccessibilityNodeInfo, result: MutableList<AccessibilityNodeInfo>) {
         val className = node.className?.toString() ?: ""
+        val contentDesc = node.contentDescription?.toString() ?: ""
+        val text = node.text?.toString() ?: ""
         
         // Collect EditText nodes and also nodes that might be address bars
-        if (className.contains("EditText", ignoreCase = true) ||
+        val isAddressBarLike = className.contains("EditText", ignoreCase = true) ||
             className.contains("Omnibox", ignoreCase = true) || // Chrome's address bar component
-            className.contains("UrlBar", ignoreCase = true)) {
+            className.contains("UrlBar", ignoreCase = true) ||
+            className.contains("LocationBar", ignoreCase = true) ||
+            contentDesc.contains("url", ignoreCase = true) ||
+            contentDesc.contains("address", ignoreCase = true) ||
+            contentDesc.contains("search", ignoreCase = true) ||
+            (text.isNotEmpty() && (text.contains("http://") || text.contains("https://") || 
+             Regex("[a-zA-Z0-9][a-zA-Z0-9-]*\\.(com|net|org|io|co|tv|xxx)").containsMatchIn(text)))
+        
+        if (isAddressBarLike) {
             result.add(AccessibilityNodeInfo.obtain(node))
         }
 
@@ -362,26 +479,33 @@ class BrowserDetectionService : AccessibilityService() {
     private fun checkAndBlockIfAdultSite(url: String) {
         val domain = url.lowercase()
         
-        Log.d(TAG, "Checking domain: $domain against adult domains list")
-        
-        // Check if unlock is still active (happy time)
-        if (UnlockManager.isUnlocked(this)) {
-            val remaining = UnlockManager.getRemainingSeconds(this)
-            Log.d(TAG, "✅ Happy time active! Remaining: ${remaining}s - Skipping block")
-            return
-        }
-        
-        // Check against adult domains list
+        // Check against adult domains list first
         val isAdultSite = ADULT_DOMAINS.any { adultDomain ->
-            val matches = domain.contains(adultDomain, ignoreCase = true)
-            if (matches) {
-                Log.d(TAG, "Match found: $domain contains $adultDomain")
-            }
-            matches
+            domain.contains(adultDomain, ignoreCase = true)
         }
 
         if (isAdultSite) {
+            // Track that we're on an adult site
+            lastKnownAdultDomain = domain
+            
+            // Check if unlock is still active (happy time)
+            if (UnlockManager.isUnlocked(this)) {
+                val remaining = UnlockManager.getRemainingSeconds(this)
+                Log.d(TAG, "✅ Happy time active! Remaining: ${remaining}s - Skipping block")
+                return
+            }
+            
+            // Prevent re-triggering blocking too frequently (within 5 seconds) for the same domain
+            // This prevents spam but allows re-triggering if overlay was dismissed or domain changed
+            val timeSinceLastBlock = System.currentTimeMillis() - lastBlockTriggerTime
+            val isSameDomain = domain == lastKnownAdultDomain
+            if (timeSinceLastBlock < 5000 && isSameDomain) {
+                // Silently skip - no need to log every check
+                return
+            }
+            
             Log.d(TAG, "🚫 Adult site detected: $domain - Triggering block")
+            lastBlockTriggerTime = System.currentTimeMillis()
             try {
                 // Start blocking overlay service
                 val intent = Intent(this, BlockingOverlayService::class.java)
@@ -390,6 +514,8 @@ class BrowserDetectionService : AccessibilityService() {
                 currentBrowserPackage?.let {
                     intent.putExtra("browser_package", it)
                 }
+                // Add flag to ensure service restarts even if already running
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(intent)
                 } else {
@@ -399,9 +525,11 @@ class BrowserDetectionService : AccessibilityService() {
                 Log.d(TAG, "✅ BlockingOverlayService started successfully")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Error starting BlockingOverlayService: ${e.message}", e)
+                e.printStackTrace()
             }
         } else {
-            Log.d(TAG, "Domain $domain is not in blocked list")
+            // Not an adult site - clear tracking
+            lastKnownAdultDomain = null
         }
     }
 
