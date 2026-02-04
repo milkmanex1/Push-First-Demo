@@ -69,6 +69,9 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:${cameraxVersion}")
     implementation("androidx.camera:camera-view:${cameraxVersion}")
     
+    // MediaPipe Pose for on-device pose detection
+    implementation("com.google.mediapipe:tasks-vision:0.10.8")
+    
     // Navigation
     implementation("androidx.navigation:navigation-compose:2.7.5")
     

@@ -16,6 +16,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 import androidx.core.content.ContextCompat
 import com.pushfirst.demo.ui.theme.PushFirstTheme
 import kotlinx.coroutines.delay
@@ -45,6 +47,7 @@ class PushupCounterActivity : ComponentActivity() {
     private var cameraProvider: ProcessCameraProvider? = null
     private var previewView: PreviewView? = null
     private var browserPackage: String? = null
+    private var poseAnalyzer: PoseAnalyzer? = null
 
     // Request camera permission
     private val requestPermissionLauncher = registerForActivityResult(
@@ -64,19 +67,88 @@ class PushupCounterActivity : ComponentActivity() {
         
         // Get browser package name from intent
         browserPackage = intent.getStringExtra("browser_package")
+        
+        // CRITICAL: Create PoseAnalyzer BEFORE setContent to avoid initialization in Compose
+        // MediaPipe MUST NOT be initialized in constructor, init block, or Compose composition
+        // State holders for Compose (will be updated by callbacks)
+        val repCountState = mutableStateOf(0)
+        val currentStateState = mutableStateOf(PushupState.UNKNOWN)
+        val isValidPoseState = mutableStateOf(false)
+        val currentLandmarksState = mutableStateOf<List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>?>(null)
+        
+        poseAnalyzer = PoseAnalyzer(
+            context = this,
+            onRepCountChanged = { count ->
+                repCountState.value = count
+            },
+            onStateChanged = { state ->
+                currentStateState.value = state
+            },
+            onValidPoseChanged = { valid ->
+                isValidPoseState.value = valid
+            }
+        )
+        android.util.Log.d("POSE_DEBUG", "onCreate: PoseAnalyzer instance created (NO initialization in constructor)")
+        
+        // CRITICAL: Initialize MediaPipe PoseLandmarker from Activity.onCreate() on main thread
+        // MUST NOT initialize in constructor, init block, or Compose composition (causes native crash)
+        android.util.Log.d("POSE_DEBUG", "onCreate: Initializing PoseLandmarker from onCreate() on main thread")
+        poseAnalyzer?.initialize()
+        android.util.Log.d("POSE_DEBUG", "onCreate: PoseLandmarker initialization called, status: ${poseAnalyzer?.getCurrentLandmarks() != null}")
 
         setContent {
+            // State for pose detection results (synced with PoseAnalyzer callbacks)
+            val repCount by repCountState
+            val currentState by currentStateState
+            val isValidPose by isValidPoseState
+            val currentLandmarks by currentLandmarksState
+            
+            val context = LocalContext.current
+            
+            // Update landmarks periodically for visualization
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(33) // ~30 FPS
+                    poseAnalyzer?.let { analyzer ->
+                        currentLandmarksState.value = analyzer.getCurrentLandmarks()
+                    }
+                }
+            }
+            
+            // Update landmarks periodically for visualization
+            LaunchedEffect(Unit) {
+                while (true) {
+                    kotlinx.coroutines.delay(33) // ~30 FPS
+                    poseAnalyzer?.let { analyzer ->
+                        currentLandmarksState.value = analyzer.getCurrentLandmarks()
+                    }
+                }
+            }
+            
             PushFirstTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     PushupCounterScreen(
+                        repCount = repCount,
+                        currentState = currentState,
+                        isValidPose = isValidPose,
+                        landmarks = currentLandmarks,
+                        onCompleteWorkout = {
+                            // Manually trigger completion for testing
+                            val activity = context as? PushupCounterActivity
+                            activity?.let {
+                                UnlockManager.setUnlocked(context)
+                                // Show unlock screen by setting repCount to 20
+                                repCountState.value = 20
+                            }
+                        },
                         onPreviewViewCreated = { view ->
                             previewView = view
                             // Start camera if permission already granted
                             if (ContextCompat.checkSelfPermission(
-                                    this,
+                                    this@PushupCounterActivity,
                                     Manifest.permission.CAMERA
                                 ) == PackageManager.PERMISSION_GRANTED
                             ) {
@@ -101,10 +173,26 @@ class PushupCounterActivity : ComponentActivity() {
     }
 
     /**
-     * Start CameraX preview with front camera
+     * Start CameraX preview with front camera and ImageAnalysis for pose detection
+     * CRITICAL: Only starts camera AFTER PoseLandmarker is initialized
      */
     private fun startCamera() {
         val previewView = this.previewView ?: return
+        val poseAnalyzer = this.poseAnalyzer ?: run {
+            android.util.Log.e("POSE_DEBUG", "startCamera: PoseAnalyzer is null, cannot start camera")
+            return
+        }
+        
+        // CRITICAL CHECK: Verify PoseLandmarker is initialized BEFORE binding analyzer
+        // This ensures MediaPipe is ready before CameraX starts sending frames
+        if (!poseAnalyzer.isPoseLandmarkerInitialized()) {
+            android.util.Log.e("POSE_DEBUG", "startCamera: PoseLandmarker not initialized, aborting camera start")
+            android.util.Log.e("POSE_DEBUG", "startCamera: Check logs for initialization errors")
+            Toast.makeText(this, "Pose detection not ready. Check logs.", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        android.util.Log.d("POSE_DEBUG", "startCamera: PoseLandmarker verified ready, starting CameraX")
         
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
@@ -122,12 +210,24 @@ class PushupCounterActivity : ComponentActivity() {
                         it.setSurfaceProvider(previewView.surfaceProvider)
                     }
 
-                // Bind preview to lifecycle
+                // Build ImageAnalysis use case for pose detection
+                val imageAnalysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                    .build()
+                    .also {
+                        it.setAnalyzer(cameraExecutor) { imageProxy ->
+                            poseAnalyzer.analyzeFrame(imageProxy)
+                        }
+                    }
+
+                // Bind preview and image analysis to lifecycle
                 cameraProvider?.unbindAll()
                 cameraProvider?.bindToLifecycle(
                     this,
                     cameraSelector,
-                    preview
+                    preview,
+                    imageAnalysis
                 )
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -178,6 +278,7 @@ class PushupCounterActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        poseAnalyzer?.close()
         cameraExecutor.shutdown()
         cameraProvider?.unbindAll()
     }
@@ -186,18 +287,22 @@ class PushupCounterActivity : ComponentActivity() {
 /**
  * PUSH-UP COUNTER SCREEN UI
  * 
- * Shows front camera preview and fake push-up counter button.
- * After 20 clicks, shows unlock message.
+ * Shows front camera preview with AI push-up detection.
+ * After 20 detected push-ups, shows unlock message.
  */
 @Composable
 fun PushupCounterScreen(
+    repCount: Int = 0,
+    currentState: PushupState = PushupState.UNKNOWN,
+    isValidPose: Boolean = false,
+    landmarks: List<NormalizedLandmark>? = null,
+    onCompleteWorkout: () -> Unit = {},
     onPreviewViewCreated: (PreviewView) -> Unit = {}
 ) {
-    var pushupCount by remember { mutableStateOf(0) }
     val context = LocalContext.current
 
     // Show unlock screen if completed
-    if (pushupCount >= 20) {
+    if (repCount >= 20) {
         // Store unlock timestamp when first reaching 20
         LaunchedEffect(Unit) {
             UnlockManager.setUnlocked(context)
@@ -218,11 +323,11 @@ fun PushupCounterScreen(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // Camera preview (top half)
+        // Camera preview (80% of screen)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
+                .weight(4f) // 4:1 ratio = 80% of screen
         ) {
             // Camera preview using CameraX
             AndroidView(
@@ -235,7 +340,13 @@ fun PushupCounterScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Overlay with count
+            // Pose skeleton overlay
+            PoseOverlay(
+                landmarks = landmarks,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Overlay with count and status
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -249,61 +360,78 @@ fun PushupCounterScreen(
                     style = MaterialTheme.typography.titleMedium
                 )
                 Text(
-                    text = "$pushupCount / 20",
+                    text = "$repCount / 20",
                     fontSize = 48.sp,
                     color = MaterialTheme.colorScheme.onPrimary,
                     style = MaterialTheme.typography.displayMedium
                 )
+                
+                // Show pose status
+                Text(
+                    text = when {
+                        !isValidPose -> "Position yourself in front of camera"
+                        currentState == PushupState.UP -> "UP ✓"
+                        currentState == PushupState.DOWN -> "DOWN ✓"
+                        else -> "Detecting..."
+                    },
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
 
-        // Control panel (bottom half)
+        // Control panel (20% of screen)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(32.dp),
+                .weight(1f) // 1:4 ratio = 20% of screen
+                .padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "💪 Tap when you complete a push-up",
-                fontSize = 18.sp,
+                text = if (isValidPose) {
+                    "💪 AI is detecting your push-ups"
+                } else {
+                    "Position yourself in front of camera"
+                },
+                fontSize = 16.sp,
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center
             )
 
-            // Push-up button
-            Button(
-                onClick = { pushupCount++ },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(80.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
-            ) {
-                Text(
-                    text = "Push-up Complete! 💪",
-                    fontSize = 20.sp,
-                    style = MaterialTheme.typography.titleLarge
-                )
-            }
-
             // Progress indicator
             LinearProgressIndicator(
-                progress = pushupCount / 20f,
+                progress = repCount / 20f,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(8.dp),
+                    .height(6.dp),
                 color = MaterialTheme.colorScheme.primary,
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
 
             Text(
-                text = "${20 - pushupCount} more to go!",
-                fontSize = 14.sp,
+                text = "${20 - repCount} more to go!",
+                fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            
+            // Temporary Complete button for testing (smaller)
+            Button(
+                onClick = onCompleteWorkout,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(40.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary
+                )
+            ) {
+                Text(
+                    text = "Complete Workout (Test)",
+                    fontSize = 14.sp
+                )
+            }
         }
     }
 }
