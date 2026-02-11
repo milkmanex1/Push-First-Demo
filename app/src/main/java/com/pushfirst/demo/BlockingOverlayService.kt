@@ -316,7 +316,10 @@ class BlockingOverlayService : Service() {
      */
     private fun startPushupActivity() {
         val intent = Intent(this, PushupCounterActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        intent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+            Intent.FLAG_ACTIVITY_CLEAR_TOP
+        )
         // Pass the browser package name so we can return to it after push-ups
         browserPackage?.let {
             intent.putExtra("browser_package", it)

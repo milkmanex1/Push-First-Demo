@@ -15,8 +15,9 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -49,6 +50,12 @@ class PushupCounterActivity : ComponentActivity() {
     private var browserPackage: String? = null
     private var poseAnalyzer: PoseAnalyzer? = null
 
+    // State holders for Compose (member vars so we can reset in onNewIntent when reused)
+    private lateinit var repCountState: MutableState<Int>
+    private lateinit var currentStateState: MutableState<PushupState>
+    private lateinit var isValidPoseState: MutableState<Boolean>
+    private lateinit var currentLandmarksState: MutableState<List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>?>
+
     // Request camera permission
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -67,15 +74,15 @@ class PushupCounterActivity : ComponentActivity() {
         
         // Get browser package name from intent
         browserPackage = intent.getStringExtra("browser_package")
+
+        // State holders for Compose (will be updated by callbacks)
+        repCountState = mutableStateOf(0)
+        currentStateState = mutableStateOf(PushupState.UNKNOWN)
+        isValidPoseState = mutableStateOf(false)
+        currentLandmarksState = mutableStateOf<List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>?>(null)
         
         // CRITICAL: Create PoseAnalyzer BEFORE setContent to avoid initialization in Compose
         // MediaPipe MUST NOT be initialized in constructor, init block, or Compose composition
-        // State holders for Compose (will be updated by callbacks)
-        val repCountState = mutableStateOf(0)
-        val currentStateState = mutableStateOf(PushupState.UNKNOWN)
-        val isValidPoseState = mutableStateOf(false)
-        val currentLandmarksState = mutableStateOf<List<com.google.mediapipe.tasks.components.containers.NormalizedLandmark>?>(null)
-        
         poseAnalyzer = PoseAnalyzer(
             context = this,
             onRepCountChanged = { count ->
@@ -170,6 +177,19 @@ class PushupCounterActivity : ComponentActivity() {
         } else {
             requestPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        browserPackage = intent.getStringExtra("browser_package")
+        // Activity was brought to front via CLEAR_TOP (e.g. user clicked Start Pushups again).
+        // Reset state so we show camera and count from 0, not the previous completion screen.
+        repCountState.value = 0
+        currentStateState.value = PushupState.UNKNOWN
+        isValidPoseState.value = false
+        currentLandmarksState.value = null
+        poseAnalyzer?.reset()
     }
 
     /**
@@ -312,6 +332,7 @@ fun PushupCounterScreen(
                 val activity = context as? android.app.Activity
                 if (activity is PushupCounterActivity) {
                     activity.returnToBrowser()
+                    activity.finish()
                 } else {
                     activity?.finish()
                 }
