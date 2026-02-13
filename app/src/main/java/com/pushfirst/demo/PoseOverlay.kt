@@ -54,9 +54,10 @@ fun PoseOverlay(
             Pair(24, 26), // Right hip to right knee
             Pair(25, 27), // Left knee to left ankle
             Pair(26, 28), // Right knee to right ankle
-            // Face (optional, for complete skeleton)
-            Pair(0, 2), Pair(2, 5), Pair(5, 8), Pair(8, 10),
-            Pair(0, 1), Pair(1, 3), Pair(3, 7), Pair(7, 9)
+            // Head (minimal: nose + eyes only)
+            Pair(0, 2),   // Nose to left eye
+            Pair(0, 5),   // Nose to right eye
+            Pair(2, 5),   // Left eye to right eye
         )
 
         // Draw lines connecting landmarks
@@ -83,14 +84,15 @@ fun PoseOverlay(
                         color = lineColor,
                         start = Offset(startX, startY),
                         end = Offset(endX, endY),
-                        strokeWidth = 4f
+                        strokeWidth = 10f
                     )
                 }
             }
         }
 
-        // Draw circles at each landmark point
+        // Draw circles at each joint (head: only nose 0 and eyes 2,5 for minimal head)
         landmarks.forEachIndexed { index, landmark ->
+            if (index in 1..4 || index in 6..10) return@forEachIndexed // Skip other face landmarks (inner/outer eyes, ears, mouth)
             val visibility = landmark.visibility().orElse(0f)
             
             if (visibility >= 0.3f) {
@@ -101,17 +103,17 @@ fun PoseOverlay(
                 val x = width - (landmark.x() * width) // Flip X horizontally
                 val y = height - (landmark.y() * height) // Flip Y vertically
                 
-                // Draw circle at landmark point
+                // Draw circle at landmark point (larger for easier visibility)
                 drawCircle(
                     color = pointColor,
-                    radius = 8f,
+                    radius = 18f,
                     center = Offset(x, y)
                 )
                 
                 // Draw a smaller inner circle for better visibility
                 drawCircle(
                     color = lineColor,
-                    radius = 4f,
+                    radius = 10f,
                     center = Offset(x, y)
                 )
             }
