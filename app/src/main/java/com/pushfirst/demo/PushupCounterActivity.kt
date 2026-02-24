@@ -14,13 +14,20 @@ import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -367,51 +374,63 @@ fun PushupCounterScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Overlay with count and status
-            Column(
+            // Overlay with count
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(24.dp)
             ) {
-                Text(
-                    text = "Push-ups Completed",
-                    fontSize = 18.sp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Text(
-                    text = "$repCount / 20",
-                    fontSize = 48.sp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    style = MaterialTheme.typography.displayMedium
-                )
-                
-                // Show pose status
-                Text(
-                    text = when {
-                        !isValidPose -> "Position yourself in front of camera"
-                        currentState == PushupState.WRONG_POSITION -> "Get into push-up position 💪 Lay flat, face the camera"
-                        currentState == PushupState.UP -> "UP ✓"
-                        currentState == PushupState.DOWN -> "DOWN ✓"
-                        else -> "Detecting..."
-                    },
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .background(
+                            brush = Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF6A5ACD).copy(alpha = 0.85f), // SlateBlue - bottom left
+                                    Color(0xFF9370DB).copy(alpha = 0.85f), // MediumPurple - middle
+                                    Color(0xFF4169E1).copy(alpha = 0.85f)  // RoyalBlue - top right
+                                ),
+                                start = Offset(0f, 500f), // bottom left
+                                end = Offset(500f, 0f)    // top right
+                            ),
+                            shape = RoundedCornerShape(28.dp)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "$repCount / 20",
+                        fontSize = 56.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
             }
         }
 
-        // Control panel (20% of screen)
+        // Control panel (slightly increased for more space)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f) // 1:4 ratio = 20% of screen
-                .padding(horizontal = 24.dp, vertical = 16.dp),
+                .weight(1.2f) // Increased from 1f to 1.2f for more space
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 24.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Status text moved from top overlay
+            Text(
+                text = when {
+                    !isValidPose -> "Position yourself in front of camera"
+                    currentState == PushupState.WRONG_POSITION -> "Get into push-up position 💪 Lay flat, face the camera"
+                    currentState == PushupState.UP -> "UP ✓"
+                    currentState == PushupState.DOWN -> "DOWN ✓"
+                    else -> "Detecting..."
+                },
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center
+            )
+            
             Text(
                 text = when {
                     !isValidPose -> "Make sure your whole body is visible"
@@ -419,8 +438,9 @@ fun PushupCounterScreen(
                     isValidPose -> "💪 AI is detecting your push-ups"
                     else -> "Position yourself in front of camera"
                 },
-                fontSize = 16.sp,
-                style = MaterialTheme.typography.titleMedium,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center
             )
 
