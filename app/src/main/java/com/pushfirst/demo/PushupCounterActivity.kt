@@ -54,7 +54,7 @@ class PushupCounterActivity : ComponentActivity() {
     private lateinit var cameraExecutor: ExecutorService
     private var cameraProvider: ProcessCameraProvider? = null
     private var previewView: PreviewView? = null
-    private var browserPackage: String? = null
+    var browserPackage: String? = null // Made accessible for Control Regained flow
     private var poseAnalyzer: PoseAnalyzer? = null
 
     // State holders for Compose (member vars so we can reset in onNewIntent when reused)
@@ -156,6 +156,13 @@ class PushupCounterActivity : ComponentActivity() {
                                 UnlockManager.setUnlocked(context)
                                 // Show unlock screen by setting repCount to 20
                                 repCountState.value = 20
+                            }
+                        },
+                        onCancelUnlock = {
+                            // Stop detection and camera, then show Control Regained screen
+                            val activity = context as? PushupCounterActivity
+                            activity?.let {
+                                it.stopDetectionAndShowControlRegained()
                             }
                         },
                         onPreviewViewCreated = { view ->
@@ -264,6 +271,30 @@ class PushupCounterActivity : ComponentActivity() {
     }
 
     /**
+     * Stop push-up detection and camera, then show Control Regained screen
+     */
+    fun stopDetectionAndShowControlRegained() {
+        // Stop camera and detection
+        cameraProvider?.unbindAll()
+        poseAnalyzer?.reset()
+        
+        // Start Control Regained activity
+        val intent = Intent(this, ControlRegainedActivity::class.java)
+        intent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+            Intent.FLAG_ACTIVITY_CLEAR_TOP
+        )
+        // Pass browser package name
+        browserPackage?.let {
+            intent.putExtra("browser_package", it)
+        }
+        startActivity(intent)
+        
+        // Finish this activity
+        finish()
+    }
+
+    /**
      * Return to the browser app after completing push-ups
      * Tries to bring browser back to foreground without resetting its state
      */
@@ -324,6 +355,7 @@ fun PushupCounterScreen(
     isValidPose: Boolean = false,
     landmarks: List<NormalizedLandmark>? = null,
     onCompleteWorkout: () -> Unit = {},
+    onCancelUnlock: () -> Unit = {},
     onPreviewViewCreated: (PreviewView) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -342,6 +374,24 @@ fun PushupCounterScreen(
                     activity.finish()
                 } else {
                     activity?.finish()
+                }
+            },
+            onUrgeGone = {
+                // Revoke unlock and show Control Regained screen
+                UnlockManager.clearUnlock(context)
+                val activity = context as? android.app.Activity
+                if (activity is PushupCounterActivity) {
+                    val intent = Intent(context, ControlRegainedActivity::class.java)
+                    intent.addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    )
+                    // Pass browser package name
+                    activity.browserPackage?.let {
+                        intent.putExtra("browser_package", it)
+                    }
+                    context.startActivity(intent)
+                    activity.finish()
                 }
             }
         )
@@ -475,6 +525,23 @@ fun PushupCounterScreen(
                     fontSize = 14.sp
                 )
             }
+            
+            // Cancel unlock button
+            Button(
+                onClick = onCancelUnlock,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                Text(
+                    text = "Cancel unlock",
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -484,7 +551,8 @@ fun PushupCounterScreen(
  */
 @Composable
 fun UnlockScreen(
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onUrgeGone: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var remainingSeconds by remember { mutableStateOf(UnlockManager.getRemainingSeconds(context)) }
@@ -531,7 +599,7 @@ fun UnlockScreen(
             fontSize = 16.sp,
             color = MaterialTheme.colorScheme.primary,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 48.dp)
+            modifier = Modifier.padding(bottom = 24.dp)
         )
 
         Button(
@@ -543,6 +611,24 @@ fun UnlockScreen(
             Text(
                 text = "Done",
                 fontSize = 20.sp
+            )
+        }
+        
+        // Urge gone button
+        Button(
+            onClick = onUrgeGone,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .padding(top = 16.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Text(
+                text = "Urge gone",
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }

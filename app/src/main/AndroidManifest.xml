@@ -46,6 +46,13 @@
             android:theme="@style/Theme.PushFirst"
             android:screenOrientation="portrait" />
 
+        <!-- Control Regained Activity -->
+        <activity
+            android:name=".ControlRegainedActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PushFirst"
+            android:screenOrientation="portrait" />
+
         <!-- 
             ACCESSIBILITY SERVICE CONFIGURATION:
             This service monitors browser navigation to detect adult websites.

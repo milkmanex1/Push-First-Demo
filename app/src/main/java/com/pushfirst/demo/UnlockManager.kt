@@ -12,6 +12,7 @@ object UnlockManager {
     private const val PREFS_NAME = "pushfirst_unlock_prefs"
     private const val KEY_UNLOCK_TIMESTAMP = "unlock_timestamp"
     private const val UNLOCK_DURATION_MS = 30_000L // 30 seconds
+    private const val KEY_BLOCKING_BYPASS_UNTIL = "blocking_bypass_until"
 
     /**
      * Store the current timestamp as unlock time
@@ -57,5 +58,40 @@ object UnlockManager {
         } else {
             0
         }
+    }
+
+    /**
+     * Clear/revoke unlock access (set timestamp to 0)
+     */
+    fun clearUnlock(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong(KEY_UNLOCK_TIMESTAMP, 0L)
+            .apply()
+    }
+
+    /**
+     * Set a temporary bypass period for blocking (e.g., during countdown overlay)
+     * @param durationMs Duration in milliseconds to bypass blocking
+     */
+    fun setBlockingBypass(context: Context, durationMs: Long) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val bypassUntil = System.currentTimeMillis() + durationMs
+        prefs.edit()
+            .putLong(KEY_BLOCKING_BYPASS_UNTIL, bypassUntil)
+            .apply()
+    }
+
+    /**
+     * Check if blocking is currently bypassed (e.g., during countdown period)
+     */
+    fun isBlockingBypassed(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val bypassUntil = prefs.getLong(KEY_BLOCKING_BYPASS_UNTIL, 0L)
+        if (bypassUntil == 0L) {
+            return false
+        }
+        val now = System.currentTimeMillis()
+        return now < bypassUntil
     }
 }

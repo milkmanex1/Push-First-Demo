@@ -707,6 +707,12 @@ class BrowserDetectionService : AccessibilityService() {
                 return
             }
             
+            // Check if blocking is temporarily bypassed (e.g., during countdown overlay)
+            if (UnlockManager.isBlockingBypassed(this)) {
+                Log.d(TAG, "Skipping block - blocking is temporarily bypassed (countdown period)")
+                return
+            }
+            
             // Prevent re-triggering blocking too frequently (within 5 seconds) for the same domain
             // This prevents spam but allows re-triggering if overlay was dismissed or domain changed
             val timeSinceLastBlock = System.currentTimeMillis() - lastBlockTriggerTime

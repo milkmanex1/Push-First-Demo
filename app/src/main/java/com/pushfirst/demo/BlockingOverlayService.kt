@@ -69,17 +69,24 @@ class BlockingOverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val blockedDomain = intent?.getStringExtra("blocked_domain") ?: "that site"
+        val isCountdownMode = intent?.getBooleanExtra("countdown_mode", false) ?: false
         browserPackage = intent?.getStringExtra("browser_package")
-        android.util.Log.d(TAG, "onStartCommand called with domain: $blockedDomain, browser: $browserPackage")
         
-        // Only show overlay if it's not already showing for this domain
-        if (isOverlayShowing && currentBlockedDomain == blockedDomain) {
-            android.util.Log.d(TAG, "Overlay already showing for $blockedDomain, skipping recreation")
-            return START_STICKY
+        if (isCountdownMode) {
+            android.util.Log.d(TAG, "onStartCommand: Countdown mode activated")
+            showCountdownOverlay()
+        } else {
+            val blockedDomain = intent?.getStringExtra("blocked_domain") ?: "that site"
+            android.util.Log.d(TAG, "onStartCommand called with domain: $blockedDomain, browser: $browserPackage")
+            
+            // Only show overlay if it's not already showing for this domain
+            if (isOverlayShowing && currentBlockedDomain == blockedDomain) {
+                android.util.Log.d(TAG, "Overlay already showing for $blockedDomain, skipping recreation")
+                return START_STICKY
+            }
+            
+            showBlockingOverlay(blockedDomain)
         }
-        
-        showBlockingOverlay(blockedDomain)
         return START_STICKY // Keep service running even if killed
     }
 
@@ -280,12 +287,34 @@ class BlockingOverlayService : Service() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, 0, 0, 32)
+                setMargins(0, 0, 0, 16)
             }
             setOnClickListener {
                 android.util.Log.d(TAG, "Start pushups button clicked")
                 removeOverlay()
                 startPushupActivity()
+                stopSelf()
+            }
+        }
+        
+        // Secondary button: "I don't need it"
+        val secondaryButton = Button(applicationContext).apply {
+            text = "I don't need it"
+            textSize = 18f
+            setPadding(32, 16, 32, 16)
+            // Style as secondary button (outlined or less prominent)
+            setBackgroundColor(0xFF2A2A2A.toInt()) // Dark gray background
+            setTextColor(ContextCompat.getColor(applicationContext, android.R.color.white))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 0, 0, 32)
+            }
+            setOnClickListener {
+                android.util.Log.d(TAG, "I don't need it button clicked")
+                removeOverlay()
+                startControlRegainedActivity()
                 stopSelf()
             }
         }
@@ -305,6 +334,7 @@ class BlockingOverlayService : Service() {
         container.addView(messageText)
         container.addView(domainText)
         container.addView(button)
+        container.addView(secondaryButton)
         container.addView(disclaimerText)
         layout.addView(container)
         
@@ -325,6 +355,175 @@ class BlockingOverlayService : Service() {
             intent.putExtra("browser_package", it)
         }
         startActivity(intent)
+    }
+
+    /**
+     * Start the Control Regained activity
+     */
+    private fun startControlRegainedActivity() {
+        val intent = Intent(this, ControlRegainedActivity::class.java)
+        intent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+            Intent.FLAG_ACTIVITY_CLEAR_TOP
+        )
+        // Pass browser package name
+        browserPackage?.let {
+            intent.putExtra("browser_package", it)
+        }
+        startActivity(intent)
+    }
+
+    /**
+     * Show a non-blocking countdown overlay that allows browser interaction
+     * Shows countdown for 10 seconds, then automatically removes itself
+     */
+    private fun showCountdownOverlay() {
+        android.util.Log.d(TAG, "Showing countdown overlay")
+        
+        // Remove any existing overlay first
+        if (isOverlayShowing) {
+            removeOverlay()
+        }
+        
+        // Check overlay permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                android.util.Log.e(TAG, "❌ Overlay permission not granted!")
+                stopSelf()
+                return
+            }
+        }
+
+        try {
+            val windowType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            } else {
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_SYSTEM_ALERT
+            }
+            
+            // Create overlay view with countdown
+            overlayView = createCountdownOverlay()
+            
+            if (overlayView == null) {
+                android.util.Log.e(TAG, "Failed to create countdown overlay view")
+                stopSelf()
+                return
+            }
+            
+            // Window params for non-blocking overlay (allows touches to pass through)
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                windowType,
+                // FLAG_NOT_TOUCH_MODAL: Allow touches to pass through to underlying apps
+                // FLAG_NOT_FOCUSABLE: Don't steal focus
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                        WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+                PixelFormat.TRANSLUCENT
+            )
+            
+            // Position at top of screen
+            params.gravity = android.view.Gravity.TOP
+            params.y = 0
+            params.format = PixelFormat.TRANSLUCENT
+            
+            val wm = windowManager
+            if (wm != null) {
+                wm.addView(overlayView, params)
+                isOverlayShowing = true
+                currentBlockedDomain = "countdown" // Track as countdown mode
+                android.util.Log.d(TAG, "✅ Countdown overlay added")
+            } else {
+                android.util.Log.e(TAG, "❌ WindowManager is null!")
+                stopSelf()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Error showing countdown overlay: ${e.message}", e)
+            isOverlayShowing = false
+            stopSelf()
+        }
+    }
+
+    /**
+     * Create countdown overlay view (non-blocking, shows at top of screen)
+     */
+    private fun createCountdownOverlay(): ViewGroup {
+        val layout = FrameLayout(applicationContext).apply {
+            setBackgroundColor(0x00000000) // Transparent background
+            // Don't intercept touches - allow them to pass through
+            setOnTouchListener { _, _ -> false } // Return false to allow touch passthrough
+        }
+        
+        val container = LinearLayout(applicationContext).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(32, 24, 32, 24)
+            setBackgroundColor(0xE0000000.toInt()) // Semi-transparent black background
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        
+        val titleText = TextView(applicationContext).apply {
+            text = "Control regained."
+            textSize = 20f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(ContextCompat.getColor(applicationContext, android.R.color.white))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 0, 0, 8)
+            }
+        }
+        
+        val countdownText = TextView(applicationContext).apply {
+            text = "Blocker resumes in 10 seconds"
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(0xFFCCCCCC.toInt()) // Light gray
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        
+        container.addView(titleText)
+        container.addView(countdownText)
+        layout.addView(container)
+        
+        // Start countdown timer - use time-based approach for accuracy
+        val startTime = System.currentTimeMillis()
+        val countdownDurationMs = 10_000L // 10 seconds
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        
+        val countdownRunnable = object : Runnable {
+            override fun run() {
+                val elapsed = System.currentTimeMillis() - startTime
+                val remaining = countdownDurationMs - elapsed
+                
+                if (remaining > 0) {
+                    // Calculate remaining seconds (round up to show next full second)
+                    val remainingSeconds = ((remaining + 999) / 1000).toInt()
+                    countdownText.text = "Blocker resumes in $remainingSeconds ${if (remainingSeconds == 1) "second" else "seconds"}"
+                    // Schedule next update in 1 second
+                    handler.postDelayed(this, 1000)
+                } else {
+                    // Countdown finished - remove overlay
+                    android.util.Log.d(TAG, "Countdown finished, removing overlay")
+                    removeOverlay()
+                    stopSelf()
+                }
+            }
+        }
+        // Start immediately (no delay)
+        handler.post(countdownRunnable)
+        
+        return layout
     }
 
     /**
