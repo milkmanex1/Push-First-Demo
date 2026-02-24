@@ -391,6 +391,7 @@ fun PushupCounterScreen(
                 Text(
                     text = when {
                         !isValidPose -> "Position yourself in front of camera"
+                        currentState == PushupState.WRONG_POSITION -> "Get into push-up position 💪 Lay flat, face the camera"
                         currentState == PushupState.UP -> "UP ✓"
                         currentState == PushupState.DOWN -> "DOWN ✓"
                         else -> "Detecting..."
@@ -412,10 +413,11 @@ fun PushupCounterScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = if (isValidPose) {
-                    "💪 AI is detecting your push-ups"
-                } else {
-                    "Position yourself in front of camera"
+                text = when {
+                    !isValidPose -> "Make sure your whole body is visible"
+                    currentState == PushupState.WRONG_POSITION -> "Lay flat facing the camera to begin"
+                    isValidPose -> "💪 AI is detecting your push-ups"
+                    else -> "Position yourself in front of camera"
                 },
                 fontSize = 16.sp,
                 style = MaterialTheme.typography.titleMedium,

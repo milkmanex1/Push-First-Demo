@@ -50,8 +50,12 @@ class PoseAnalyzer(
     private val UP_THRESHOLD = 160.0 // degrees - arms extended
     private val DOWN_THRESHOLD = 90.0 // degrees - arms bent
     
-    // Minimum visibility threshold for landmarks (lowered for better detection)
-    private val MIN_VISIBILITY = 0.3f
+    // Minimum visibility threshold for landmarks
+    private val MIN_VISIBILITY = 0.5f
+    
+    // Angle smoothing
+    private val angleHistory = ArrayDeque<Double>(5)
+    private val ANGLE_HISTORY_SIZE = 5
     
     // CRITICAL: MediaPipe Tasks MUST NOT be initialized in constructors or init blocks
     // Initialization must happen from Activity.onCreate() on the main thread
@@ -96,9 +100,9 @@ class PoseAnalyzer(
                 .setResultListener { result, image ->
                     processPoseResult(result, image)
                 }
-                .setMinPoseDetectionConfidence(0.3f)
-                .setMinPosePresenceConfidence(0.3f)
-                .setMinTrackingConfidence(0.3f)
+                .setMinPoseDetectionConfidence(0.5f)
+                .setMinPosePresenceConfidence(0.5f)
+                .setMinTrackingConfidence(0.5f)
                 .build()
             
             android.util.Log.d("POSE_DEBUG", "initialize: Creating PoseLandmarker instance")
@@ -273,6 +277,17 @@ class PoseAnalyzer(
         android.util.Log.d("POSE_DEBUG", "processPoseResult: All required landmarks visible - valid pose")
         updateValidPose(true)
         
+        // Check body orientation - must be in push-up position (front-facing camera)
+        if (!isInPushupPosition(leftShoulder, rightShoulder, leftHip, rightHip, leftElbow, rightElbow)) {
+            android.util.Log.d("POSE_DEBUG", "Not in push-up position, skipping")
+            if (currentState != PushupState.WRONG_POSITION) {
+                currentState = PushupState.WRONG_POSITION
+                mainHandler.post { onStateChanged(currentState) }
+            }
+            angleHistory.clear()
+            return
+        }
+        
         // Calculate elbow angles for both arms
         val leftElbowAngle = calculateAngle(
             leftShoulder.x(), leftShoulder.y(),
@@ -294,6 +309,49 @@ class PoseAnalyzer(
         
         // Clean up MPImage
         image.close()
+    }
+    
+    /**
+     * Check if body is in push-up position (front-facing camera)
+     * Checks that shoulders and hips are close in Y (body is flat), elbows are at shoulder level,
+     * and shoulders are level (not tilted)
+     */
+    private fun isInPushupPosition(
+        leftShoulder: NormalizedLandmark,
+        rightShoulder: NormalizedLandmark,
+        leftHip: NormalizedLandmark,
+        rightHip: NormalizedLandmark,
+        leftElbow: NormalizedLandmark,
+        rightElbow: NormalizedLandmark
+    ): Boolean {
+        // In normalized coords: Y=0 is top of frame, Y=1 is bottom
+        // When standing: shoulders near top, hips near middle/bottom, large Y gap
+        // When in push-up position facing camera: shoulders and hips are close in Y,
+        // elbows are roughly at or below shoulder level
+
+        val shoulderMidY = (leftShoulder.y() + rightShoulder.y()) / 2f
+        val hipMidY = (leftHip.y() + rightHip.y()) / 2f
+        val elbowMidY = (leftElbow.y() + rightElbow.y()) / 2f
+
+        // Check 1: Shoulders and hips should be close in Y (body is flat/horizontal toward camera)
+        // When standing, hipMidY is much larger than shoulderMidY (hips are lower in frame)
+        // When in push-up position, they should be within ~0.3 of each other
+        val shoulderHipYDiff = abs(hipMidY - shoulderMidY)
+        val isBodyFlat = shoulderHipYDiff < 0.35f
+
+        // Check 2: Elbows should be at roughly the same Y level as shoulders or slightly below
+        // When standing with arms down, elbows are far below shoulders
+        val elbowShoulderYDiff = elbowMidY - shoulderMidY
+        val elbowsInRange = elbowShoulderYDiff < 0.3f
+
+        // Check 3: Left and right shoulders should be roughly level (not tilted >30% of frame height)
+        val shoulderLevelDiff = abs(leftShoulder.y() - rightShoulder.y())
+        val shouldersLevel = shoulderLevelDiff < 0.25f
+
+        android.util.Log.d("POSE_DEBUG", "PushupPosition check - shoulderHipYDiff: $shoulderHipYDiff, elbowShoulderYDiff: $elbowShoulderYDiff, shoulderLevelDiff: $shoulderLevelDiff")
+        android.util.Log.d("POSE_DEBUG", "isBodyFlat: $isBodyFlat, elbowsInRange: $elbowsInRange, shouldersLevel: $shouldersLevel")
+
+        return isBodyFlat && elbowsInRange && shouldersLevel
     }
     
     /**
@@ -336,9 +394,14 @@ class PoseAnalyzer(
      * Counts rep on transition DOWN → UP
      */
     private fun updateState(elbowAngle: Double) {
+        // Smooth angle over last 5 frames
+        angleHistory.addLast(elbowAngle)
+        if (angleHistory.size > ANGLE_HISTORY_SIZE) angleHistory.removeFirst()
+        val smoothedAngle = angleHistory.average()
+        
         val newState = when {
-            elbowAngle >= UP_THRESHOLD -> PushupState.UP
-            elbowAngle <= DOWN_THRESHOLD -> PushupState.DOWN
+            smoothedAngle >= UP_THRESHOLD -> PushupState.UP
+            smoothedAngle <= DOWN_THRESHOLD -> PushupState.DOWN
             else -> {
                 // If in between thresholds, maintain current state
                 // But if state is UNKNOWN, initialize to UP (starting position)
@@ -408,6 +471,7 @@ class PoseAnalyzer(
         repCount = 0
         currentState = PushupState.UNKNOWN
         isValidPose = false
+        angleHistory.clear()
         onRepCountChanged(repCount)
         onStateChanged(currentState)
         onValidPoseChanged(isValidPose)
@@ -428,5 +492,6 @@ class PoseAnalyzer(
 enum class PushupState {
     UNKNOWN,  // Initial state or pose not detected
     UP,       // Arms extended (elbow angle > 160°)
-    DOWN      // Arms bent (elbow angle < 90°)
+    DOWN,     // Arms bent (elbow angle < 90°)
+    WRONG_POSITION  // Body detected but not in push-up position
 }
