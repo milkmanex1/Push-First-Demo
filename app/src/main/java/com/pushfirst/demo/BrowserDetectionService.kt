@@ -10,6 +10,8 @@ import android.provider.Settings
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 /**
  * ACCESSIBILITY SERVICE - Browser Detection
@@ -40,11 +42,16 @@ class BrowserDetectionService : AccessibilityService() {
     private var lastBlockTriggerTime: Long = 0 // Track when we last triggered blocking
     private var lastTextChangeTime: Long = 0 // Track when user last typed in address bar
     private var lastGooglePageTime: Long = 0 // Track when we were last on Google page
+    private var lastSearchPhraseTriggerTime: Long = 0 // For demo: cooldown after triggering on search phrase
     private val handler = Handler(Looper.getMainLooper())
     private val debounceDelay = 300L // 300ms debounce (reduced for faster detection)
     private val textChangeCooldown = 500L // Ignore URL detection for 500ms after text changes (reduced to allow faster detection)
     private val googleToBannedSiteDelay = 1000L // Delay after leaving Google before detecting banned sites (prevents hover preview false positives)
     private var isMonitoring = false
+    
+    // Blocked domains loaded from assets file (loaded once on service start)
+    private val blockedDomains: MutableSet<String> = mutableSetOf()
+    private var domainsLoaded = false
     private val monitoringRunnable = object : Runnable {
         override fun run() {
             if (isMonitoring) {
@@ -56,38 +63,24 @@ class BrowserDetectionService : AccessibilityService() {
 
     companion object {
         private const val TAG = "BrowserDetectionService"
-        
+
         /**
-         * Hardcoded list of adult domains to block
-         * In production, this would be fetched from a backend or config file
+         * Feature flag: when true, popup also triggers when user types the demo phrase in the search bar.
+         * When false, behavior is unchanged (only URL-based blocking).
          */
-        private val ADULT_DOMAINS = listOf(
-            "pornhub.com",
-            "www.pornhub.com",
-            "xvideos.com",
-            "www.xvideos.com",
-            "xnxx.com",
-            "www.xnxx.com",
-            "hentai",
-            "xhamster.com",
-            "www.xhamster.com",
-            "redtube.com",
-            "www.redtube.com",
-            "youporn.com",
-            "www.youporn.com",
-            "tube8.com",
-            "www.tube8.com",
-            "spankwire.com",
-            "www.spankwire.com",
-            "keezmovies.com",
-            "www.keezmovies.com",
-            "porn.com",
-            "www.porn.com",
-            "spankbang.com",
-            "www.spankbang.com",
-            "cornhub.website",
-            "www.cornhub.website"
-        )
+        private const val SEARCH_PHRASE_DEMO_ENABLED = true
+
+        /** Demo phrase that triggers the overlay when typed in the browser search bar (only if SEARCH_PHRASE_DEMO_ENABLED is true). */
+        private const val SEARCH_PHRASE_DEMO_TRIGGER = "premium corn videos 4k"
+
+        /** Domain shown in the popup when triggered by the demo phrase (demo only). */
+        private const val SEARCH_PHRASE_DEMO_FAKE_DOMAIN = "cornhub.website"
+
+        /** Cooldown (ms) between search-phrase triggers to avoid spam. */
+        private const val SEARCH_PHRASE_TRIGGER_COOLDOWN_MS = 10_000L
+        
+        /** Path to the blocked domains file in assets */
+        private const val BLOCKED_DOMAINS_FILE = "adult_domains.txt.txt"
 
         /**
          * Check if Accessibility Service is enabled
@@ -106,6 +99,8 @@ class BrowserDetectionService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.d(TAG, "Accessibility Service connected")
+        // Load blocked domains from assets file (once)
+        loadBlockedDomains()
         // Start continuous monitoring
         isMonitoring = true
         handler.post(monitoringRunnable)
@@ -123,6 +118,10 @@ class BrowserDetectionService : AccessibilityService() {
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) {
             lastTextChangeTime = System.currentTimeMillis()
             Log.d(TAG, "Text change detected in address bar, starting cooldown")
+            // Demo feature: when flag is on, check search bar for trigger phrase (use event text for reliability)
+            if (SEARCH_PHRASE_DEMO_ENABLED) {
+                checkSearchBarForDemoPhrase(event)
+            }
             return // Don't process text change events for URL detection
         }
 
@@ -539,22 +538,135 @@ class BrowserDetectionService : AccessibilityService() {
     }
 
     /**
+     * Load blocked domains from assets file into a Set for fast lookup
+     * This is called once when the service starts
+     */
+    private fun loadBlockedDomains() {
+        if (domainsLoaded) {
+            Log.d(TAG, "Blocked domains already loaded (${blockedDomains.size} domains)")
+            return
+        }
+        
+        try {
+            val inputStream = assets.open(BLOCKED_DOMAINS_FILE)
+            val reader = BufferedReader(InputStreamReader(inputStream))
+            var line: String?
+            var count = 0
+            
+            while (reader.readLine().also { line = it } != null) {
+                line?.let { domain ->
+                    // Trim whitespace and convert to lowercase for case-insensitive matching
+                    val normalizedDomain = domain.trim().lowercase()
+                    if (normalizedDomain.isNotEmpty()) {
+                        blockedDomains.add(normalizedDomain)
+                        count++
+                    }
+                }
+            }
+            
+            reader.close()
+            inputStream.close()
+            domainsLoaded = true
+            Log.d(TAG, "✅ Loaded $count blocked domains from assets file")
+            
+            // Debug: Check if a known adult domain is in the set
+            val testDomains = listOf("pornhub.com", "xvideos.com", "xnxx.com")
+            for (testDomain in testDomains) {
+                val found = blockedDomains.contains(testDomain.lowercase()) || 
+                           blockedDomains.contains("www.${testDomain.lowercase()}")
+                Log.d(TAG, "Test domain '$testDomain' in blocked set: $found")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error loading blocked domains from assets: ${e.message}", e)
+            e.printStackTrace()
+            // Fallback: service will continue but won't block any sites
+        }
+    }
+    
+    /**
+     * Check if a domain (or any of its parent domains) is in the blocked set
+     * Supports subdomain blocking: if example.com is blocked, sub.example.com is also blocked
+     * 
+     * @param host The hostname to check (e.g., "sub.example.com")
+     * @return true if the domain or any parent domain is blocked
+     */
+    private fun isDomainBlocked(host: String): Boolean {
+        if (blockedDomains.isEmpty()) {
+            Log.w(TAG, "⚠️ Blocked domains set is empty! File may not have loaded correctly.")
+            return false
+        }
+        
+        val normalizedHost = host.lowercase().trim()
+        if (normalizedHost.isEmpty()) {
+            return false
+        }
+        
+        // Remove www. prefix for consistent matching (domains in file may or may not have www)
+        val hostWithoutWww = normalizedHost.removePrefix("www.")
+        
+        // Check exact match first (with and without www)
+        if (blockedDomains.contains(normalizedHost) || blockedDomains.contains(hostWithoutWww)) {
+            Log.d(TAG, "✅ Exact match found: $normalizedHost")
+            return true
+        }
+        
+        // Check parent domains (subdomain blocking)
+        // For "sub.example.com", check: "example.com" (skip "com" as it's too broad)
+        val parts = hostWithoutWww.split(".")
+        if (parts.size > 2) {
+            // Start from the rightmost part and build parent domains
+            // For "sub.example.com": parts = ["sub", "example", "com"]
+            // Check: "example.com" (skip "com" TLD)
+            // Need at least 3 parts (subdomain.domain.tld) to have a parent domain to check
+            for (i in 1 until parts.size - 1) {
+                val parentDomain = parts.subList(i, parts.size).joinToString(".")
+                if (blockedDomains.contains(parentDomain)) {
+                    Log.d(TAG, "✅ Domain blocked via parent domain: $hostWithoutWww -> $parentDomain")
+                    return true
+                }
+            }
+        }
+        
+        Log.d(TAG, "❌ Domain not blocked: $hostWithoutWww (checked ${blockedDomains.size} domains)")
+        return false
+    }
+    
+    /**
      * Check if URL matches any adult domain and trigger blocking if so
      */
     private fun checkAndBlockIfAdultSite(url: String) {
-        val domain = url.lowercase()
-        Log.d(TAG, "checkAndBlockIfAdultSite called with: $domain")
+        Log.d(TAG, "checkAndBlockIfAdultSite called with: $url")
         
-        // Check against adult domains list first
-        val isAdultSite = ADULT_DOMAINS.any { adultDomain ->
-            domain.contains(adultDomain, ignoreCase = true)
+        // Extract host from URL - handle both full URLs and plain domains
+        val host = if (url.contains("://")) {
+            // Full URL with protocol - use Uri.parse
+            try {
+                val uri = Uri.parse(url)
+                uri.host
+            } catch (e: Exception) {
+                Log.e(TAG, "Error parsing URL: $url", e)
+                return
+            }
+        } else {
+            // Plain domain (what extractUrlFromViewHierarchy returns)
+            url.trim()
         }
         
-        Log.d(TAG, "Is adult site? $isAdultSite (checked against ${ADULT_DOMAINS.size} domains)")
+        if (host == null || host.isEmpty()) {
+            Log.d(TAG, "No host found in URL: $url")
+            return
+        }
+        
+        Log.d(TAG, "Extracted host: $host")
+        
+        // Check against blocked domains set
+        val isAdultSite = isDomainBlocked(host)
+        
+        Log.d(TAG, "Is adult site? $isAdultSite (checked against ${blockedDomains.size} domains)")
 
         if (isAdultSite) {
             // Track that we're on an adult site
-            lastKnownAdultDomain = domain
+            lastKnownAdultDomain = host
             
             // Check if unlock is still active (happy time)
             if (UnlockManager.isUnlocked(this)) {
@@ -571,9 +683,23 @@ class BrowserDetectionService : AccessibilityService() {
                 handler.postDelayed({
                     // Re-check if we're still on the banned site
                     val currentUrl = extractUrlFromViewHierarchy(rootInActiveWindow)
-                    if (currentUrl != null && currentUrl.lowercase().contains(domain)) {
-                        Log.d(TAG, "✅ Still on banned site after delay - triggering block")
-                        triggerBlockingOverlay(domain)
+                    if (currentUrl != null) {
+                        // Extract host from current URL (handles both full URLs and plain domains)
+                        val currentHost = if (currentUrl.contains("://")) {
+                            try {
+                                Uri.parse(currentUrl).host
+                            } catch (e: Exception) {
+                                null
+                            }
+                        } else {
+                            currentUrl.trim()
+                        }
+                        if (currentHost != null && currentHost.lowercase() == host.lowercase()) {
+                            Log.d(TAG, "✅ Still on banned site after delay - triggering block")
+                            triggerBlockingOverlay(host)
+                        } else {
+                            Log.d(TAG, "Not on banned site anymore - was a hover preview")
+                        }
                     } else {
                         Log.d(TAG, "Not on banned site anymore - was a hover preview")
                     }
@@ -584,15 +710,15 @@ class BrowserDetectionService : AccessibilityService() {
             // Prevent re-triggering blocking too frequently (within 5 seconds) for the same domain
             // This prevents spam but allows re-triggering if overlay was dismissed or domain changed
             val timeSinceLastBlock = System.currentTimeMillis() - lastBlockTriggerTime
-            val isSameDomain = domain == lastKnownAdultDomain
+            val isSameDomain = host.lowercase() == lastKnownAdultDomain?.lowercase()
             Log.d(TAG, "Time since last block: ${timeSinceLastBlock}ms, isSameDomain: $isSameDomain")
             if (timeSinceLastBlock < 5000 && isSameDomain) {
                 Log.d(TAG, "Skipping block - too soon since last block")
                 return
             }
             
-            Log.d(TAG, "🚫 Adult site detected: $domain - Triggering block")
-            triggerBlockingOverlay(domain)
+            Log.d(TAG, "🚫 Adult site detected: $host - Triggering block")
+            triggerBlockingOverlay(host)
         } else {
             // Not an adult site - clear tracking
             lastKnownAdultDomain = null
@@ -625,6 +751,49 @@ class BrowserDetectionService : AccessibilityService() {
             Log.e(TAG, "❌ Error starting BlockingOverlayService: ${e.message}", e)
             e.printStackTrace()
         }
+    }
+
+    /**
+     * Demo only (when SEARCH_PHRASE_DEMO_ENABLED): check search bar text for the trigger phrase
+     * and show overlay with fake domain message if matched.
+     * Uses the accessibility event's text when available (the view that changed); otherwise falls back to hierarchy.
+     */
+    private fun checkSearchBarForDemoPhrase(event: AccessibilityEvent) {
+        if (!SEARCH_PHRASE_DEMO_ENABLED) return
+        // Prefer text from the event (the view that just had text changed) - most reliable
+        val searchBarText = event.text?.firstOrNull()?.toString()?.trim()
+            ?: getSearchBarTextIncludingFocused(rootInActiveWindow)
+        if (searchBarText.isNullOrEmpty()) {
+            Log.d(TAG, "Search phrase demo: no text in event or search bar")
+            return
+        }
+        Log.d(TAG, "Search phrase demo: checking text (length=${searchBarText.length})")
+        val phrase = SEARCH_PHRASE_DEMO_TRIGGER
+        if (!searchBarText.contains(phrase, ignoreCase = true)) return
+        val now = System.currentTimeMillis()
+        if (now - lastSearchPhraseTriggerTime < SEARCH_PHRASE_TRIGGER_COOLDOWN_MS) {
+            Log.d(TAG, "Search phrase demo: cooldown active, skipping")
+            return
+        }
+        lastSearchPhraseTriggerTime = now
+        Log.d(TAG, "Search phrase demo: detected '$phrase' in search bar -> triggering overlay for ${SEARCH_PHRASE_DEMO_FAKE_DOMAIN}")
+        triggerBlockingOverlay(SEARCH_PHRASE_DEMO_FAKE_DOMAIN)
+    }
+
+    /**
+     * Gets the current text from the browser search/address bar, including when the user is typing (focused EditText).
+     * Used only for the search-phrase demo feature.
+     */
+    private fun getSearchBarTextIncludingFocused(rootNode: AccessibilityNodeInfo?): String? {
+        if (rootNode == null) return null
+        val editTextNodes = mutableListOf<AccessibilityNodeInfo>()
+        collectEditTextNodes(rootNode, editTextNodes)
+        // Prefer focused node (user is typing in search bar)
+        val focused = editTextNodes.firstOrNull { it.isFocused }
+        val node = focused ?: editTextNodes.firstOrNull { (it.text?.toString() ?: "").isNotBlank() }
+        val text = node?.text?.toString()?.trim()
+        editTextNodes.forEach { it.recycle() }
+        return if (text.isNullOrEmpty()) null else text
     }
 
     override fun onInterrupt() {

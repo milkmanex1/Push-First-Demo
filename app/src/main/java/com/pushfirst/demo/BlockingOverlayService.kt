@@ -268,7 +268,7 @@ class BlockingOverlayService : Service() {
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, 0, 0, 56)
+                setMargins(0, 0, 0, 120)
             }
         }
         
