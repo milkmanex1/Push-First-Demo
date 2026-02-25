@@ -68,7 +68,7 @@ class BrowserDetectionService : AccessibilityService() {
          * Feature flag: when true, popup also triggers when user types the demo phrase in the search bar.
          * When false, behavior is unchanged (only URL-based blocking).
          */
-        private const val SEARCH_PHRASE_DEMO_ENABLED = true
+        private const val SEARCH_PHRASE_DEMO_ENABLED = false
 
         /** Demo phrase that triggers the overlay when typed in the browser search bar (only if SEARCH_PHRASE_DEMO_ENABLED is true). */
         private const val SEARCH_PHRASE_DEMO_TRIGGER = "premium corn videos 4k"
@@ -469,25 +469,32 @@ class BrowserDetectionService : AccessibilityService() {
     }
 
     /**
-     * Recursively collect all EditText nodes from the view hierarchy
-     * Also collects nodes that might be address bars based on class name or content description
+     * Recursively collect all EditText nodes from the view hierarchy.
+     *
+     * IMPORTANT: Be very strict about what we consider an "address bar":
+     * - Rely primarily on well-known address bar class names (EditText / UrlBar / Omnibox / LocationBar)
+     * - Optionally, very specific content descriptions that explicitly mention "address bar" or "URL bar"
+     *
+     * We intentionally DO NOT:
+     * - Infer address bars from generic "search" content descriptions
+     * - Infer address bars from any text that merely "looks like" a URL or domain
+     *
+     * This prevents false positives from Google search results, history/autocomplete dropdowns,
+     * and link previews that show adult domains without actual navigation into those sites.
      */
     private fun collectEditTextNodes(node: AccessibilityNodeInfo, result: MutableList<AccessibilityNodeInfo>) {
         val className = node.className?.toString() ?: ""
         val contentDesc = node.contentDescription?.toString() ?: ""
-        val text = node.text?.toString() ?: ""
-        
-        // Collect EditText nodes and also nodes that might be address bars
+
+        // Collect ONLY nodes that are very likely to be the actual browser address bar
         val isAddressBarLike = className.contains("EditText", ignoreCase = true) ||
-            className.contains("Omnibox", ignoreCase = true) || // Chrome's address bar component
+            className.contains("Omnibox", ignoreCase = true) ||     // Chrome's address bar component
             className.contains("UrlBar", ignoreCase = true) ||
             className.contains("LocationBar", ignoreCase = true) ||
-            contentDesc.contains("url", ignoreCase = true) ||
-            contentDesc.contains("address", ignoreCase = true) ||
-            contentDesc.contains("search", ignoreCase = true) ||
-            (text.isNotEmpty() && (text.contains("http://") || text.contains("https://") || 
-             Regex("[a-zA-Z0-9][a-zA-Z0-9-]*\\.(com|net|org|io|co|tv|xxx)").containsMatchIn(text)))
-        
+            // Be strict with content descriptions: avoid generic "search" which is used in many places
+            contentDesc.contains("address bar", ignoreCase = true) ||
+            contentDesc.contains("url bar", ignoreCase = true)
+
         if (isAddressBarLike) {
             result.add(AccessibilityNodeInfo.obtain(node))
         }
