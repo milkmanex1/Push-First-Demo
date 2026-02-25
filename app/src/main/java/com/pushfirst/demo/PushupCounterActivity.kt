@@ -16,16 +16,27 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.BitmapFactory
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -34,6 +45,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import com.pushfirst.demo.R
 import com.pushfirst.demo.ui.theme.PushFirstTheme
 import kotlinx.coroutines.delay
 import java.util.concurrent.ExecutorService
@@ -77,6 +90,27 @@ class PushupCounterActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Make status bar transparent and extend content behind it
+        try {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val insetsController = window.insetsController
+                insetsController?.setSystemBarsAppearance(
+                    0,
+                    android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                )
+            } else {
+                // For older versions, use deprecated method
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("PushupCounterActivity", "Error setting status bar: ${e.message}", e)
+            // Continue execution even if status bar setup fails
+        }
+        
         cameraExecutor = Executors.newSingleThreadExecutor()
         
         // Get browser package name from intent
@@ -401,11 +435,11 @@ fun PushupCounterScreen(
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // Camera preview (80% of screen)
+        // Camera preview (reduced to give more space to control panel)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(4f) // 4:1 ratio = 80% of screen
+                .weight(3.5f) // Reduced from 4f to give more space to control panel
         ) {
             // Camera preview using CameraX
             AndroidView(
@@ -428,7 +462,7 @@ fun PushupCounterScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(24.dp)
+                    .padding(top = 64.dp, start = 24.dp, end = 24.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -456,15 +490,16 @@ fun PushupCounterScreen(
             }
         }
 
-        // Control panel (slightly increased for more space)
+        // Control panel (increased vertical space to show all buttons)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1.2f) // Increased from 1f to 1.2f for more space
+                .weight(1.5f) // Increased weight to provide more vertical space
                 .background(MaterialTheme.colorScheme.surface)
+                .verticalScroll(rememberScrollState()) // Make scrollable if content overflows
                 .padding(horizontal = 24.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp) // Slightly reduced spacing to fit content
         ) {
             // Status text moved from top overlay
             Text(
@@ -527,19 +562,28 @@ fun PushupCounterScreen(
             }
             
             // Cancel unlock button
-            Button(
+            val cancelInteractionSource = remember { MutableInteractionSource() }
+            val isCancelPressed by cancelInteractionSource.collectIsPressedAsState()
+            OutlinedButton(
                 onClick = onCancelUnlock,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
+                    .height(50.dp)
+                    .graphicsLayer(alpha = if (isCancelPressed) 0.6f else 1.0f), // Press opacity change
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.Transparent, // Transparent background
+                    contentColor = Color(0xFF999999) // Muted grey text
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    width = 1.dp,
+                    color = Color(0xFF666666) // Light grey border
+                ),
+                interactionSource = cancelInteractionSource
             ) {
                 Text(
                     text = "Cancel unlock",
                     fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color(0xFF999999) // Muted grey
                 )
             }
         }
@@ -565,71 +609,108 @@ fun UnlockScreen(
         }
     }
     
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "🎉",
-            fontSize = 100.sp,
-            modifier = Modifier.padding(bottom = 24.dp)
-        )
-
-        Text(
-            text = "Happy Time Unlocked 😈",
-            fontSize = 32.sp,
-            style = MaterialTheme.typography.headlineLarge,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        Text(
-            text = "You earned it! 💪",
-            fontSize = 18.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        
-        Text(
-            text = "${remainingSeconds}s remaining",
-            fontSize = 16.sp,
-            color = MaterialTheme.colorScheme.primary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 24.dp)
-        )
-
-        Button(
-            onClick = onDone,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(60.dp)
-        ) {
-            Text(
-                text = "Done",
-                fontSize = 20.sp
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Full screen background image
+        val bitmap = remember {
+            try {
+                val images = listOf(
+                    "You Earned it/1.jpeg",
+                    "You Earned it/2.jpeg",
+                    "You Earned it/3.jpeg",
+                    "You Earned it/4.jpeg"
+                )
+                val inputStream = context.assets.open(images.random())
+                BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
+            } catch (e: Exception) {
+                android.util.Log.e("UnlockScreen", "Error loading image: ${e.message}", e)
+                null
+            }
+        }
+        bitmap?.let {
+            Image(
+                bitmap = it,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
         }
-        
-        // Urge gone button
-        Button(
-            onClick = onUrgeGone,
+
+        // Dark gradient overlay from transparent to near-black (moved lower)
+        Box(
             modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xCC000000),
+                            Color(0xF2000000)
+                        ),
+                        startY = 600f // Moved lower to show more background image
+                    )
+                )
+        )
+
+        // Content anchored to bottom
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(50.dp)
-                .padding(top = 16.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+                .navigationBarsPadding() // Add padding for Android navigation bar
+                .padding(start = 32.dp, top = 0.dp, end = 32.dp, bottom = 32.dp), // Then regular padding
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "Urge gone",
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                text = "You earned it.",
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
             )
+            Text(
+                text = "${remainingSeconds}s remaining",
+                fontSize = 16.sp,
+                color = Color(0xFFAAAAAA),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // I don't need it button - gradient purple to blue
+            val urgeGoneInteractionSource = remember { MutableInteractionSource() }
+            val isUrgeGonePressed by urgeGoneInteractionSource.collectIsPressedAsState()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF4B0082), Color(0xFF4169E1))
+                        ),
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                    .graphicsLayer(alpha = if (isUrgeGonePressed) 0.6f else 1.0f)
+                    .clickable(interactionSource = urgeGoneInteractionSource, indication = null) { onUrgeGone() }
+                    .padding(horizontal = 32.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "I don't need it", fontSize = 18.sp, color = Color.White)
+            }
+
+            // Return button - ghost outlined
+            val returnInteractionSource = remember { MutableInteractionSource() }
+            val isReturnPressed by returnInteractionSource.collectIsPressedAsState()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF999999), RoundedCornerShape(20.dp))
+                    .graphicsLayer(alpha = if (isReturnPressed) 0.6f else 1.0f)
+                    .clickable(interactionSource = returnInteractionSource, indication = null) { onDone() }
+                    .padding(horizontal = 32.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "Return", fontSize = 18.sp, color = Color(0xFF999999))
+            }
         }
     }
 }

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 
+    Unlocked padlock icon - vector drawable representation.
+    If you have the actual PNG/JPG image, you can replace this with:
+    unlocked_padlock.png (or .jpg, .webp) in the same directory.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="120dp"
+    android:height="120dp"
+    android:viewportWidth="120"
+    android:viewportHeight="120">
+    
+    <!-- Grey C-shaped shackle (open/unlocked) -->
+    <path
+        android:fillColor="#808080"
+        android:pathData="M25,35 
+            Q25,20 40,20 
+            Q55,20 60,30
+            L60,25
+            Q55,15 40,15
+            Q20,15 20,35
+            L20,50
+            Q20,65 35,65
+            Q50,65 55,55
+            L55,60
+            Q50,70 35,70
+            Q15,70 15,50
+            Z"/>
+    
+    <!-- Yellow padlock body with rounded corners -->
+    <path
+        android:fillColor="#FFD700"
+        android:pathData="M30,50 
+            L30,80 
+            Q30,85 35,85
+            L85,85
+            Q90,85 90,80
+            L90,50
+            Q90,45 85,45
+            L35,45
+            Q30,45 30,50
+            Z"/>
+    
+    <!-- Dark grey keyhole in center -->
+    <path
+        android:fillColor="#404040"
+        android:pathData="M55,55
+            Q60,55 60,60
+            Q60,65 55,65
+            Q50,65 50,60
+            Q50,55 55,55
+            Z
+            M55,65
+            L55,75
+            L65,75
+            L65,65
+            Z"/>
+</vector>

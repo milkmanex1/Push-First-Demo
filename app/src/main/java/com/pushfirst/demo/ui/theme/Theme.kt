@@ -53,8 +53,8 @@ fun PushFirstTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = darkTheme
+            window.statusBarColor = Color.Transparent.toArgb() // Transparent status bar
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false // Dark status bar icons
         }
     }
 

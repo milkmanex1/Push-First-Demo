@@ -5,13 +5,29 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.graphics.BitmapFactory
+import androidx.core.view.WindowCompat
 import com.pushfirst.demo.ui.theme.PushFirstTheme
 import kotlinx.coroutines.delay
 
@@ -26,6 +42,8 @@ class ControlRegainedActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
         
         // Get browser package name from intent
         browserPackage = intent.getStringExtra("browser_package")
@@ -98,37 +116,82 @@ class ControlRegainedActivity : ComponentActivity() {
 fun ControlRegainedScreen(
     onBriefDisplayComplete: () -> Unit
 ) {
-    // Show for 2 seconds, then trigger completion
-    LaunchedEffect(Unit) {
-        delay(2000) // 2 seconds
-        onBriefDisplayComplete()
-    }
+    val context = LocalContext.current
     
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        // Large centered title
-        Text(
-            text = "Control regained.",
-            fontSize = 36.sp,
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = MaterialTheme.typography.headlineLarge.fontWeight,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onBackground,
-            modifier = Modifier.padding(bottom = 24.dp)
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Full screen background image
+        val restBitmap = remember {
+            try {
+                val inputStream = context.assets.open("Rest.jpeg")
+                BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
+            } catch (e: Exception) {
+                null
+            }
+        }
+        restBitmap?.let {
+            Image(
+                bitmap = it,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        // Dark gradient overlay from transparent to near-black (moved lower)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xCC000000),
+                            Color(0xF2000000)
+                        ),
+                        startY = 600f // Moved lower to show more background image
+                    )
+                )
         )
-        
-        // Smaller grey subtitle
-        Text(
-            text = "Close your tabs. Blocker resumes in 10 seconds.",
-            fontSize = 16.sp,
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+
+        // Content anchored to bottom
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(start = 32.dp, top = 0.dp, end = 32.dp, bottom = 80.dp), // Bottom padding to position content
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = "Not today.",
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "The urge lost. You didn't.",
+                fontSize = 18.sp,
+                color = Color(0xFFAAAAAA),
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Done button - ghost outlined
+            val doneInteractionSource = remember { MutableInteractionSource() }
+            val isDonePressed by doneInteractionSource.collectIsPressedAsState()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, Color(0xFF999999), RoundedCornerShape(20.dp))
+                    .graphicsLayer(alpha = if (isDonePressed) 0.6f else 1.0f)
+                    .clickable(interactionSource = doneInteractionSource, indication = null) { onBriefDisplayComplete() }
+                    .padding(horizontal = 32.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "Done", fontSize = 18.sp, color = Color(0xFF999999))
+            }
+        }
     }
 }

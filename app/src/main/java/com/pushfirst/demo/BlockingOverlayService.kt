@@ -280,14 +280,28 @@ class BlockingOverlayService : Service() {
         }
         
         val button = Button(applicationContext).apply {
-            text = "Start Pushups 💪"
+            text = "Start Pushups"
             textSize = 20f
             setPadding(32, 16, 32, 16)
+            // White text color
+            setTextColor(ContextCompat.getColor(applicationContext, android.R.color.white))
+            // Dark purple to blue gradient background with rounded corners
+            val density = applicationContext.resources.displayMetrics.density
+            val buttonDrawable = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(
+                    0xFF4B0082.toInt(), // Dark purple (Indigo)
+                    0xFF4169E1.toInt()  // Royal blue
+                )
+            ).apply {
+                cornerRadius = 20f * density // Match Material button corner radius
+            }
+            background = buttonDrawable
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, 0, 0, 16)
+                setMargins(0, 0, 0, 48) // More vertical space between buttons
             }
             setOnClickListener {
                 android.util.Log.d(TAG, "Start pushups button clicked")
@@ -302,32 +316,45 @@ class BlockingOverlayService : Service() {
             text = "I don't need it"
             textSize = 18f
             setPadding(32, 16, 32, 16)
-            // Style as secondary button (outlined or less prominent)
-            setBackgroundColor(0xFF2A2A2A.toInt()) // Dark gray background
-            setTextColor(ContextCompat.getColor(applicationContext, android.R.color.white))
+            // Transparent background with light border
+            setBackgroundColor(0x00000000.toInt()) // Transparent background
+            setTextColor(0xFF999999.toInt()) // Muted grey text
+            // Add border using drawable - match Material button corner radius
+            val drawable = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x00000000) // Transparent fill
+                setStroke(2, 0xFF666666.toInt()) // Light grey border (2px)
+                // Match Material Design 3 button corner radius (typically 20dp for filled buttons)
+                // Using pixels: scales with density to match the start button
+                val density = applicationContext.resources.displayMetrics.density
+                cornerRadius = 20f * density // Match Material button corner radius (same as start button)
+            }
+            background = drawable
+            // Add press state for opacity change
+            setOnTouchListener { view, event ->
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        view.alpha = 0.6f // Pressed state - reduce opacity
+                        true
+                    }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                        view.alpha = 1.0f // Normal state - full opacity
+                        if (event.action == android.view.MotionEvent.ACTION_UP) {
+                            android.util.Log.d(TAG, "I don't need it button clicked")
+                            removeOverlay()
+                            startControlRegainedActivity()
+                            stopSelf()
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 setMargins(0, 0, 0, 32)
             }
-            setOnClickListener {
-                android.util.Log.d(TAG, "I don't need it button clicked")
-                removeOverlay()
-                startControlRegainedActivity()
-                stopSelf()
-            }
-        }
-        
-        val disclaimerText = TextView(applicationContext).apply {
-            text = "Complete 20 pushups to unlock"
-            textSize = 14f
-            gravity = android.view.Gravity.CENTER
-            setTextColor(0xFF999999.toInt()) // Gray color
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
         }
         
         container.addView(emojiText)
@@ -335,7 +362,6 @@ class BlockingOverlayService : Service() {
         container.addView(domainText)
         container.addView(button)
         container.addView(secondaryButton)
-        container.addView(disclaimerText)
         layout.addView(container)
         
         return layout
@@ -416,18 +442,19 @@ class BlockingOverlayService : Service() {
                 WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 windowType,
-                // FLAG_NOT_TOUCH_MODAL: Allow touches to pass through to underlying apps
+                // FLAG_NOT_TOUCHABLE: Window does not receive touch events (allows passthrough)
                 // FLAG_NOT_FOCUSABLE: Don't steal focus
+                // FLAG_NOT_TOUCH_MODAL: Allow touches outside window to pass through
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                         WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
                         WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
                 PixelFormat.TRANSLUCENT
             )
             
-            // Position at top of screen
-            params.gravity = android.view.Gravity.TOP
-            params.y = 0
+            // Position at center of screen
+            params.gravity = android.view.Gravity.CENTER
             params.format = PixelFormat.TRANSLUCENT
             
             val wm = windowManager
@@ -453,6 +480,8 @@ class BlockingOverlayService : Service() {
     private fun createCountdownOverlay(): ViewGroup {
         val layout = FrameLayout(applicationContext).apply {
             setBackgroundColor(0x00000000) // Transparent background
+            isClickable = false
+            isFocusable = false
             // Don't intercept touches - allow them to pass through
             setOnTouchListener { _, _ -> false } // Return false to allow touch passthrough
         }
@@ -460,32 +489,39 @@ class BlockingOverlayService : Service() {
         val container = LinearLayout(applicationContext).apply {
             orientation = LinearLayout.VERTICAL
             gravity = android.view.Gravity.CENTER_HORIZONTAL
-            setPadding(32, 24, 32, 24)
-            setBackgroundColor(0xE0000000.toInt()) // Semi-transparent black background
+            setPadding(48, 32, 48, 32) // Increased padding for larger background
+            // Dark blue background with higher opacity (less translucent)
+            // 0xD0 = ~82% opacity (darker, less translucent than before)
+            // 0x1E3A5F = Dark blue color (RGB: 30, 58, 95)
+            setBackgroundColor(0xD01E3A5F.toInt())
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             )
+            isClickable = false
+            isFocusable = false
+            // Don't intercept touches - allow them to pass through
+            setOnTouchListener { _, _ -> false } // Return false to allow touch passthrough
         }
         
         val titleText = TextView(applicationContext).apply {
-            text = "Control regained."
-            textSize = 20f
+            text = "Close your tabs."
+            textSize = 14f // Reduced from 20f
             gravity = android.view.Gravity.CENTER
             setTextColor(ContextCompat.getColor(applicationContext, android.R.color.white))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, 0, 0, 8)
+                setMargins(0, 0, 0, 4) // Reduced margin
             }
         }
         
         val countdownText = TextView(applicationContext).apply {
             text = "Blocker resumes in 10 seconds"
-            textSize = 16f
+            textSize = 12f // Reduced from 16f
             gravity = android.view.Gravity.CENTER
-            setTextColor(0xFFCCCCCC.toInt()) // Light gray
+            setTextColor(0xFFE0E0E0.toInt()) // Light gray/white
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
