@@ -558,21 +558,23 @@ fun PushupCounterScreen(
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            
-            // Temporary Complete button for testing (smaller)
-            Button(
-                onClick = onCompleteWorkout,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondary
-                )
-            ) {
-                Text(
-                    text = "Complete Workout (Test)",
-                    fontSize = 14.sp
-                )
+
+            if (AppConfig.SHOW_SKIP_BUTTON) {
+                // Temporary Complete button for testing (smaller)
+                Button(
+                    onClick = onCompleteWorkout,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(40.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondary
+                    )
+                ) {
+                    Text(
+                        text = "Complete Workout (Test)",
+                        fontSize = 14.sp
+                    )
+                }
             }
             
             // Cancel unlock button
@@ -683,7 +685,7 @@ fun UnlockScreen(
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "${remainingSeconds}s remaining",
+                text = "15 minutes. Your call.",
                 fontSize = 16.sp,
                 color = Color(0xFFAAAAAA),
                 textAlign = TextAlign.Center

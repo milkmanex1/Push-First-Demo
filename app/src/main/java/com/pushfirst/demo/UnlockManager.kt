@@ -11,7 +11,7 @@ import android.content.SharedPreferences
 object UnlockManager {
     private const val PREFS_NAME = "pushfirst_unlock_prefs"
     private const val KEY_UNLOCK_TIMESTAMP = "unlock_timestamp"
-    private const val UNLOCK_DURATION_MS = 30_000L // 30 seconds
+    private val UNLOCK_DURATION_MS = AppConfig.UNLOCK_DURATION_MS
     private const val KEY_BLOCKING_BYPASS_UNTIL = "blocking_bypass_until"
 
     /**
