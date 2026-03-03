@@ -90,7 +90,9 @@ class PushupCounterActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+        // Dismiss any existing blocking overlay when this activity is freshly created
+        stopService(Intent(this, BlockingOverlayService::class.java))
+
         // Make status bar transparent and extend content behind it
         try {
             WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -238,6 +240,18 @@ class PushupCounterActivity : ComponentActivity() {
         isValidPoseState.value = false
         currentLandmarksState.value = null
         poseAnalyzer?.reset()
+
+        // Restart camera if previewView is ready and permission is granted
+        if (
+            previewView != null &&
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            cameraProvider?.unbindAll()
+            startCamera()
+        }
     }
 
     /**

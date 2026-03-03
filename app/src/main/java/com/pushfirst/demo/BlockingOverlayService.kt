@@ -305,9 +305,7 @@ class BlockingOverlayService : Service() {
             }
             setOnClickListener {
                 android.util.Log.d(TAG, "Start pushups button clicked")
-                removeOverlay()
                 startPushupActivity()
-                stopSelf()
             }
         }
         
