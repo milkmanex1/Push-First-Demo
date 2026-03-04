@@ -19,6 +19,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -708,7 +709,7 @@ fun UnlockScreen(
                         shape = RoundedCornerShape(20.dp)
                     )
                     .graphicsLayer(alpha = if (isUrgeGonePressed) 0.6f else 1.0f)
-                    .clickable(interactionSource = urgeGoneInteractionSource, indication = null) { onUrgeGone() }
+                    .clickable(interactionSource = urgeGoneInteractionSource, indication = rememberRipple()) { onUrgeGone() }
                     .padding(horizontal = 32.dp, vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -723,7 +724,7 @@ fun UnlockScreen(
                     .fillMaxWidth()
                     .border(1.dp, Color(0xFF999999), RoundedCornerShape(20.dp))
                     .graphicsLayer(alpha = if (isReturnPressed) 0.6f else 1.0f)
-                    .clickable(interactionSource = returnInteractionSource, indication = null) { onDone() }
+                    .clickable(interactionSource = returnInteractionSource, indication = rememberRipple()) { onDone() }
                     .padding(horizontal = 32.dp, vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {

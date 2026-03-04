@@ -296,18 +296,38 @@ class BlockingOverlayService : Service() {
             ).apply {
                 cornerRadius = 20f * density // Match Material button corner radius
             }
-            background = buttonDrawable
+            // Add ripple effect
+            val rippleDrawable = android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+                buttonDrawable,
+                null
+            )
+            background = rippleDrawable
+            // Add immediate visual response on press
+            setOnTouchListener { view, event ->
+                when (event.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        view.alpha = 0.7f // Darken button on press
+                        true
+                    }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                        view.alpha = 1.0f // Restore opacity
+                        if (event.action == android.view.MotionEvent.ACTION_UP) {
+                            android.util.Log.d(TAG, "Start pushups button clicked")
+                            removeOverlay()
+                            startPushupActivity()
+                            stopSelf()
+                        }
+                        true
+                    }
+                    else -> false
+                }
+            }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 setMargins(0, 0, 0, 48) // More vertical space between buttons
-            }
-            setOnClickListener {
-                android.util.Log.d(TAG, "Start pushups button clicked")
-                removeOverlay()
-                startPushupActivity()
-                stopSelf()
             }
         }
         

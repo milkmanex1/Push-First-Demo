@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -186,7 +187,7 @@ fun ControlRegainedScreen(
                     .fillMaxWidth()
                     .border(1.dp, Color(0xFF999999), RoundedCornerShape(20.dp))
                     .graphicsLayer(alpha = if (isDonePressed) 0.6f else 1.0f)
-                    .clickable(interactionSource = doneInteractionSource, indication = null) { onBriefDisplayComplete() }
+                    .clickable(interactionSource = doneInteractionSource, indication = rememberRipple()) { onBriefDisplayComplete() }
                     .padding(horizontal = 32.dp, vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
