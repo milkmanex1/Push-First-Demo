@@ -1,0 +1,18 @@
+---
+name: prevent-camera-bug
+description: This is a new rule
+---
+
+# Overview
+
+Insert overview text here. The agent will only see this should they choose to apply the rule.
+
+Do NOT modify these files unless explicitly told to:
+
+BlockingOverlayService.kt
+PoseAnalyzer.kt
+BrowserDetectionService.kt
+PushupCounterActivity.kt
+
+When modifying PushupCounterActivity.kt, never move or remove poseAnalyzer.initialize() from onCreate(), and never add stopService() calls in onCreate().
+Only modify files directly relevant to the requested change.

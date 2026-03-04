@@ -91,7 +91,7 @@ class PushupCounterActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Dismiss any existing blocking overlay when this activity is freshly created
-        stopService(Intent(this, BlockingOverlayService::class.java))
+       
 
         // Make status bar transparent and extend content behind it
         try {
@@ -189,7 +189,8 @@ class PushupCounterActivity : ComponentActivity() {
                             // Manually trigger completion for testing
                             val activity = context as? PushupCounterActivity
                             activity?.let {
-                                UnlockManager.setUnlocked(context)
+                                            UnlockManager.setUnlocked(context)
+                                            UnlockCountdownService.start(context)
                                 // Show unlock screen by setting repCount to 20
                                 repCountState.value = 20
                             }
@@ -410,9 +411,10 @@ fun PushupCounterScreen(
 
     // Show unlock screen if completed
     if (repCount >= 20) {
-        // Store unlock timestamp when first reaching 20
+            // Store unlock timestamp when first reaching 20
         LaunchedEffect(Unit) {
             UnlockManager.setUnlocked(context)
+            UnlockCountdownService.start(context)
         }
         UnlockScreen(
             onDone = {
