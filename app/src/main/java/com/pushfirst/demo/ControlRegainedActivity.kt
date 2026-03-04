@@ -31,6 +31,7 @@ import android.graphics.BitmapFactory
 import androidx.core.view.WindowCompat
 import com.pushfirst.demo.ui.theme.PushFirstTheme
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.layout.BoxWithConstraints
 
 /**
  * CONTROL REGAINED ACTIVITY
@@ -119,16 +120,61 @@ fun ControlRegainedScreen(
 ) {
     val context = LocalContext.current
     
-    Box(modifier = Modifier.fillMaxSize()) {
-        // Full screen background image
-        val restBitmap = remember {
+    // Randomly select image each time the screen is shown
+    val restBitmap = remember {
+        try {
+            val imagePath = if (AppConfig.Is_Stoic) {
+                // Dynamically list all images from Rest Stoic folder
+                val stoicFolderPath = "Rest Stoic"
+                val imageExtensions = setOf(".jpeg", ".jpg", ".png", ".webp")
+                
+                val availableImages = try {
+                    context.assets.list(stoicFolderPath)?.filter { fileName ->
+                        val lowerName = fileName.lowercase()
+                        imageExtensions.any { lowerName.endsWith(it) }
+                    }?.map { "$stoicFolderPath/$it" } ?: emptyList()
+                } catch (e: Exception) {
+                    android.util.Log.e("ControlRegainedScreen", "Error listing Rest Stoic folder: ${e.message}", e)
+                    emptyList()
+                }
+                
+                if (availableImages.isNotEmpty()) {
+                    availableImages.random()
+                } else {
+                    android.util.Log.w("ControlRegainedScreen", "No images found in Rest Stoic folder, falling back to Rest.jpeg")
+                    "Rest.jpeg"
+                }
+            } else {
+                "Rest.jpeg"
+            }
+            
+            val inputStream = context.assets.open(imagePath)
+            BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
+        } catch (e: Exception) {
+            android.util.Log.e("ControlRegainedScreen", "Error loading image: ${e.message}", e)
+            // Fallback: try to load default Rest.jpeg
             try {
-                val inputStream = context.assets.open("Rest.jpeg")
-                BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
-            } catch (e: Exception) {
+                val fallbackStream = context.assets.open("Rest.jpeg")
+                BitmapFactory.decodeStream(fallbackStream)?.asImageBitmap()
+            } catch (fallbackException: Exception) {
+                android.util.Log.e("ControlRegainedScreen", "Error loading fallback image: ${fallbackException.message}", fallbackException)
                 null
             }
         }
+    }
+    
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val screenHeight = maxHeight
+        val isStoic = AppConfig.Is_Stoic
+        
+        // Calculate 30% of screen height in Dp
+        val bottomPadding = if (isStoic) {
+            screenHeight * 0.3f
+        } else {
+            80.dp
+        }
+        
+        // Full screen background image
         restBitmap?.let {
             Image(
                 bitmap = it,
@@ -138,60 +184,125 @@ fun ControlRegainedScreen(
             )
         }
 
-        // Dark gradient overlay from transparent to near-black (moved lower)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color(0xCC000000),
-                            Color(0xF2000000)
-                        ),
-                        startY = 600f // Moved lower to show more background image
+        // Dark gradient overlay - only show when Is_Stoic is false
+        if (!isStoic) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color(0xCC000000),
+                                Color(0xF2000000)
+                            ),
+                            startY = 600f // Moved lower to show more background image
+                        )
                     )
+            )
+        }
+
+        // Content - positioned differently based on Is_Stoic flag
+        if (isStoic) {
+            // When Is_Stoic is true: text and button moved down by 15% of screen height
+            
+            // Text content - positioned in center area, moved down by 15%
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(y = screenHeight * 0.15f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Not today.",
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
                 )
-        )
-
-        // Content anchored to bottom
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(start = 32.dp, top = 0.dp, end = 32.dp, bottom = 80.dp), // Bottom padding to position content
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Text(
-                text = "Not today.",
-                fontSize = 36.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = "The urge lost. You didn't.",
-                fontSize = 18.sp,
-                color = Color(0xFFAAAAAA),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Done button - ghost outlined
+                Text(
+                    text = "The urge lost. You didn't.",
+                    fontSize = 18.sp,
+                    color = Color(0xFFAAAAAA),
+                    textAlign = TextAlign.Center
+                )
+            }
+            
+            // Done button - positioned at bottom 10% of screen (moved up ~5% from previous)
             val doneInteractionSource = remember { MutableInteractionSource() }
             val isDonePressed by doneInteractionSource.collectIsPressedAsState()
             Box(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .border(1.dp, Color(0xFF999999), RoundedCornerShape(20.dp))
-                    .graphicsLayer(alpha = if (isDonePressed) 0.6f else 1.0f)
-                    .clickable(interactionSource = doneInteractionSource, indication = rememberRipple()) { onBriefDisplayComplete() }
-                    .padding(horizontal = 32.dp, vertical = 16.dp),
-                contentAlignment = Alignment.Center
+                    .padding(
+                        start = 32.dp,
+                        end = 32.dp,
+                        bottom = screenHeight * 0.10f
+                    )
             ) {
-                Text(text = "Done", fontSize = 18.sp, color = Color(0xFF999999))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0x66000000), RoundedCornerShape(20.dp)) // subtle grey/black translucent background
+                        .border(1.dp, Color(0xFF999999), RoundedCornerShape(20.dp))
+                        .graphicsLayer(alpha = if (isDonePressed) 0.6f else 1.0f)
+                        .clickable(interactionSource = doneInteractionSource, indication = rememberRipple()) { onBriefDisplayComplete() }
+                        .padding(horizontal = 32.dp, vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "Done", fontSize = 18.sp, color = Color(0xFF999999))
+                }
+            }
+        } else {
+            // When Is_Stoic is false: original layout with text and button together
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(
+                        start = 32.dp,
+                        top = 0.dp,
+                        end = 32.dp,
+                        bottom = bottomPadding
+                    ),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Not today.",
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "The urge lost. You didn't.",
+                    fontSize = 18.sp,
+                    color = Color(0xFFAAAAAA),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Done button - ghost outlined
+                val doneInteractionSource = remember { MutableInteractionSource() }
+                val isDonePressed by doneInteractionSource.collectIsPressedAsState()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0x66000000), RoundedCornerShape(20.dp)) // subtle grey/black translucent background
+                        .border(1.dp, Color(0xFF999999), RoundedCornerShape(20.dp))
+                        .graphicsLayer(alpha = if (isDonePressed) 0.6f else 1.0f)
+                        .clickable(interactionSource = doneInteractionSource, indication = rememberRipple()) { onBriefDisplayComplete() }
+                        .padding(horizontal = 32.dp, vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "Done", fontSize = 18.sp, color = Color(0xFF999999))
+                }
             }
         }
     }
