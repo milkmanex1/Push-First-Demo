@@ -632,13 +632,62 @@ fun UnlockScreen(
         // Full screen background image
         val bitmap = remember {
             try {
-                val images = listOf(
-                    "You Earned it/1.jpeg",
-                    "You Earned it/2.jpeg",
-                    "You Earned it/3.jpeg",
-                    "You Earned it/4.jpeg"
-                )
-                val inputStream = context.assets.open(images.random())
+                // Choose background based on Is_Stoic flag
+                val imagePath = if (AppConfig.Is_Stoic) {
+                    // Dynamically list all images from "You Earned It Stoic" folder
+                    val stoicFolderPath = "You Earned It Stoic"
+                    val imageExtensions = setOf(".jpeg", ".jpg", ".png", ".webp")
+
+                    val availableStoicImages = try {
+                        context.assets.list(stoicFolderPath)?.filter { fileName ->
+                            val lowerName = fileName.lowercase()
+                            imageExtensions.any { lowerName.endsWith(it) }
+                        }?.map { "$stoicFolderPath/$it" } ?: emptyList()
+                    } catch (e: Exception) {
+                        android.util.Log.e("UnlockScreen", "Error listing You Earned It Stoic folder: ${e.message}", e)
+                        emptyList()
+                    }
+
+                    if (availableStoicImages.isNotEmpty()) {
+                        availableStoicImages.random()
+                    } else {
+                        android.util.Log.w("UnlockScreen", "No images found in You Earned It Stoic folder, falling back to default You Earned it images")
+                        null
+                    }
+                } else {
+                    null
+                }
+
+                val finalImagePath = imagePath ?: run {
+                    // Fallback: default "You Earned it" images (original behavior)
+                    val defaultFolderPath = "You Earned it"
+                    val imageExtensions = setOf(".jpeg", ".jpg", ".png", ".webp")
+
+                    val availableImages = try {
+                        context.assets.list(defaultFolderPath)?.filter { fileName ->
+                            val lowerName = fileName.lowercase()
+                            imageExtensions.any { lowerName.endsWith(it) }
+                        }?.map { "$defaultFolderPath/$it" } ?: emptyList()
+                    } catch (e: Exception) {
+                        android.util.Log.e("UnlockScreen", "Error listing You Earned it folder: ${e.message}", e)
+                        emptyList()
+                    }
+
+                    if (availableImages.isNotEmpty()) {
+                        availableImages.random()
+                    } else {
+                        // As a last resort, fall back to the original hardcoded list (in case listing fails)
+                        val images = listOf(
+                            "You Earned it/1.jpeg",
+                            "You Earned it/2.jpeg",
+                            "You Earned it/3.jpeg",
+                            "You Earned it/4.jpeg"
+                        )
+                        images.random()
+                    }
+                }
+
+                val inputStream = context.assets.open(finalImagePath)
                 BitmapFactory.decodeStream(inputStream)?.asImageBitmap()
             } catch (e: Exception) {
                 android.util.Log.e("UnlockScreen", "Error loading image: ${e.message}", e)
