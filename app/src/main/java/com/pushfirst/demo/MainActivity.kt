@@ -2,6 +2,7 @@
 package com.pushfirst.demo
 
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -9,16 +10,30 @@ import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -76,6 +91,28 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Background image — welcome screen only
+            if (showWelcomeScreen) {
+                val context = LocalContext.current
+                val bgBitmap = remember {
+                    context.assets.open("Rest Stoic/Rest 2.jpeg")
+                        .use { BitmapFactory.decodeStream(it) }
+                }
+                Image(
+                    bitmap = bgBitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                // Dark scrim so text stays readable
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color(0x88000000))
+                )
+            }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -88,9 +125,11 @@ class MainActivity : ComponentActivity() {
                 Spacer(modifier = Modifier.height(100.dp))
 
                 Text(
-                    text = "Push First 💪",
-                    fontSize = 32.sp,
-                    style = MaterialTheme.typography.headlineLarge,
+                    text = "PUSH FIRST",
+                    fontSize = 48.sp,
+                    fontFamily = FontFamily(Font(R.font.bebasneue_regular)),
+                    letterSpacing = 4.sp,
+                    color = Color.White,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
 
@@ -143,14 +182,11 @@ class MainActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                Button(
+                GradientButton(
+                    text = "Get Started",
                     onClick = { showWelcomeScreen = false },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp)
-                ) {
-                    Text("Get Started")
-                }
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(50.dp))
             } else {
@@ -232,26 +268,57 @@ class MainActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                Button(
+                OutlinedButton(
                     onClick = { showWelcomeScreen = true },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp)
+                        .height(56.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, Color(0xFF555555)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color(0xFFAAAAAA)
+                    )
                 ) {
-                    Text("Back to first screen")
+                    Text("Back")
                 }
 
-                Button(
+                Spacer(modifier = Modifier.height(12.dp))
+
+                GradientButton(
+                    text = "Done",
                     onClick = { this@MainActivity.finish() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp)
-                ) {
-                    Text("Done")
-                }
+                    modifier = Modifier.fillMaxWidth()
+                )
 
                 Spacer(modifier = Modifier.height(50.dp))
             }
+        }
+        } // end outer Box
+    }
+
+    @Composable
+    fun GradientButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, fontSize: androidx.compose.ui.unit.TextUnit = 17.sp) {
+        val interactionSource = remember { MutableInteractionSource() }
+        val gradient = Brush.horizontalGradient(
+            colors = listOf(Color(0xFF4B0082), Color(0xFF4169E1))
+        )
+        Box(
+            modifier = modifier
+                .height(56.dp)
+                .clip(RoundedCornerShape(20.dp))
+                .background(gradient)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = rememberRipple(color = Color.White)
+                ) { onClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                fontSize = fontSize,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
         }
     }
 
@@ -446,7 +513,12 @@ class MainActivity : ComponentActivity() {
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(56.dp)
+                                .height(56.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, Color(0xFF555555)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFFAAAAAA)
+                            )
                         ) {
                             Text(
                                 text = "Cancel",
@@ -454,20 +526,15 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        Button(
+                        GradientButton(
+                            text = "I Understand, Continue",
                             onClick = {
                                 view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                                 onContinue()
                             },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp)
-                        ) {
-                            Text(
-                                text = "I Understand, Continue",
-                                style = MaterialTheme.typography.labelLarge
-                            )
-                        }
+                            modifier = Modifier.weight(1f),
+                            fontSize = 14.sp
+                        )
                     }
                 }
             }
