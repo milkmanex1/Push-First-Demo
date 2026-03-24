@@ -38,8 +38,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -168,9 +166,9 @@ class MainActivity : ComponentActivity() {
 
                 Text(
                     text = "PUSH FIRST",
-                    fontSize = 48.sp,
-                    fontFamily = FontFamily(Font(R.font.bebasneue_regular)),
-                    letterSpacing = 4.sp,
+                    fontSize = 54.sp,
+                    fontFamily = CinzelFont,
+                    letterSpacing = 6.sp,
                     color = Color.White,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )

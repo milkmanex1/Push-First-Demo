@@ -30,8 +30,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -119,7 +121,7 @@ class OnboardingActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     OnboardingFlow(
-                        startPage = if (forcePaywall) 2 else 0,
+                        startPage = if (forcePaywall) 5 else 0,
                         onStartTrial = { planId ->
                             billingManager.launchPurchaseFlow(this@OnboardingActivity, planId)
                         },
@@ -166,8 +168,11 @@ private fun OnboardingFlow(
     ) { currentPage ->
         when (currentPage) {
             0 -> ValuePropScreen(onNext = { page = 1 }, onBack = null)
-            1 -> HowItWorksScreen(onNext = { page = 2 }, onBack = { page = 0 })
-            2 -> PaywallScreen(onStartTrial = onStartTrial, onRestore = onRestore, onBack = { page = 1 })
+            1 -> PornIsDrugScreen(onNext = { page = 2 }, onBack = { page = 0 })
+            2 -> RealCostScreen(onNext = { page = 3 }, onBack = { page = 1 })
+            3 -> WillpowerFailsScreen(onNext = { page = 4 }, onBack = { page = 2 })
+            4 -> HowItWorksScreen(onNext = { page = 5 }, onBack = { page = 3 })
+            5 -> PaywallScreen(onStartTrial = onStartTrial, onRestore = onRestore, onBack = { page = 4 })
         }
     }
 }
@@ -184,7 +189,7 @@ private fun ValuePropScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        OnboardingTopBar(currentPage = 0, pageCount = 3, onBack = onBack)
+        OnboardingTopBar(currentPage = 0, pageCount = 6, onBack = onBack)
 
         Spacer(modifier = Modifier.weight(0.5f))
 
@@ -206,17 +211,25 @@ private fun ValuePropScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
 
         Spacer(modifier = Modifier.height(40.dp))
 
+        val redGlow = Shadow(color = Color(0xFFFF3B3B), offset = Offset.Zero, blurRadius = 20f)
+
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = Color.Red)) { append("Want to watch porn?") }
+                    withStyle(SpanStyle(color = Color.White)) {
+                        append("Want to watch porn?")
+                    }
                     append("\n")
-                    withStyle(SpanStyle(color = Color.White)) { append("Do 20 push-ups first.") }
+                    withStyle(SpanStyle(color = Color(0xFFFF3B3B), shadow = redGlow)) {
+                        append("Do 20 push-ups first.")
+                    }
                 },
-                fontSize = 26.sp,
+                fontSize = 29.sp,
                 fontWeight = FontWeight.ExtraBold,
+                fontFamily = CinzelFont,
+                letterSpacing = 3.sp,
                 textAlign = TextAlign.Center,
-                lineHeight = 34.sp
+                lineHeight = 39.sp
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -254,14 +267,16 @@ private fun HowItWorksScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        OnboardingTopBar(currentPage = 1, pageCount = 3, onBack = onBack)
+        OnboardingTopBar(currentPage = 4, pageCount = 6, onBack = onBack)
 
         Spacer(modifier = Modifier.weight(0.3f))
 
         Text(
             text = "How it works",
-            fontSize = 30.sp,
+            fontSize = 34.sp,
             fontWeight = FontWeight.ExtraBold,
+            fontFamily = CinzelFont,
+            letterSpacing = 3.sp,
             color = Color.White,
             textAlign = TextAlign.Center
         )
@@ -334,7 +349,221 @@ private fun HowItWorksStep(emoji: String, title: String, subtitle: String) {
     }
 }
 
-// ─── Screen 3: Paywall ──────────────────────────────────────────────────────
+// ─── Screen 3: Porn is a drug ───────────────────────────────────────────────
+
+@Composable
+private fun PornIsDrugScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
+    val redGlow = Shadow(color = Color(0xFFFF3B3B), offset = Offset.Zero, blurRadius = 20f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        OnboardingTopBar(currentPage = 1, pageCount = 6, onBack = onBack)
+
+        Spacer(modifier = Modifier.weight(0.5f))
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = Color(0xFFFF3B3B), shadow = redGlow)) {
+                        append("Porn")
+                    }
+                    withStyle(SpanStyle(color = Color.White)) {
+                        append(" is a drug.")
+                    }
+                },
+                fontSize = 34.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = CinzelFont,
+                letterSpacing = 3.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 42.sp
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = buildAnnotatedString {
+                    append("It hijacks your brain's ")
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) {
+                        append("dopamine")
+                    }
+                    append(" system — the same chemical behind every addiction. Over time, you need more to feel anything.")
+                },
+                fontSize = 16.sp,
+                color = Color(0xFFAAAAAA),
+                textAlign = TextAlign.Center,
+                lineHeight = 24.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        GradientButton(
+            text = "Next",
+            onClick = onNext,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+// ─── Screen 4: The real cost ─────────────────────────────────────────────────
+
+@Composable
+private fun RealCostScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
+    val redGlow = Shadow(color = Color(0xFFFF3B3B), offset = Offset.Zero, blurRadius = 15f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        OnboardingTopBar(currentPage = 2, pageCount = 6, onBack = onBack)
+
+        Spacer(modifier = Modifier.weight(0.4f))
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "The real cost.",
+                fontSize = 34.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = CinzelFont,
+                letterSpacing = 3.sp,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(36.dp))
+
+            Column(
+                verticalArrangement = Arrangement.spacedBy(28.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                listOf(
+                    "Kills your sex drive." to "Over 50% of heavy users report loss of interest in real sex.",
+                    "Destroys relationships." to "Porn replaces your desire for real connection with a craving for more porn.",
+                    "Hijacks your motivation." to "Elevated dopamine leaves you depressed, foggy, and unmotivated."
+                ).forEach { (headline, subtext) ->
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = headline,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFF3B3B),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = androidx.compose.ui.text.TextStyle(shadow = redGlow)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = subtext,
+                            fontSize = 14.sp,
+                            color = Color(0xFFAAAAAA),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 20.sp,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        GradientButton(
+            text = "Next",
+            onClick = onNext,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+// ─── Screen 5: Willpower fails ───────────────────────────────────────────────
+
+@Composable
+private fun WillpowerFailsScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
+    val cyanGlow = Shadow(color = Color(0xFF00D4FF), offset = Offset.Zero, blurRadius = 20f)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        OnboardingTopBar(currentPage = 3, pageCount = 6, onBack = onBack)
+
+        Spacer(modifier = Modifier.weight(0.4f))
+
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = Color.White)) {
+                        append("Willpower fails.\n")
+                    }
+                    withStyle(SpanStyle(color = Color(0xFF00D4FF), shadow = cyanGlow)) {
+                        append("Replacement works.")
+                    }
+                },
+                fontSize = 34.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontFamily = CinzelFont,
+                letterSpacing = 3.sp,
+                textAlign = TextAlign.Center,
+                lineHeight = 42.sp
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = buildAnnotatedString {
+                    append("Science shows the most effective way to break an addiction is to ")
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) {
+                        append("replace it with a physical habit")
+                    }
+                    append(". Every push-up rewires your brain.")
+                },
+                fontSize = 16.sp,
+                color = Color(0xFFAAAAAA),
+                textAlign = TextAlign.Center,
+                lineHeight = 24.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Text(
+            text = "Backed by behavioral science research.",
+            fontSize = 12.sp,
+            color = Color(0xFF555555),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        GradientButton(
+            text = "Next",
+            onClick = onNext,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+// ─── Screen 6: Paywall ──────────────────────────────────────────────────────
 
 @Composable
 private fun PaywallScreen(
@@ -352,14 +581,16 @@ private fun PaywallScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        OnboardingTopBar(currentPage = 2, pageCount = 3, onBack = onBack)
+        OnboardingTopBar(currentPage = 5, pageCount = 6, onBack = onBack)
 
         Spacer(modifier = Modifier.weight(0.2f))
 
         Text(
             text = "Start your journey",
-            fontSize = 30.sp,
+            fontSize = 34.sp,
             fontWeight = FontWeight.ExtraBold,
+            fontFamily = CinzelFont,
+            letterSpacing = 3.sp,
             color = Color.White,
             textAlign = TextAlign.Center
         )
