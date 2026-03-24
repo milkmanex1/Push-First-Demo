@@ -1,15 +1,21 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.pushfirst.demo
 
+import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,10 +52,15 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.pushfirst.demo.ui.theme.PushFirstTheme
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var billingManager: BillingManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
+
+        // Show the main screen immediately — subscription check runs in background
         setContent {
             PushFirstTheme {
                 Surface(
@@ -60,6 +71,37 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        // Background subscription enforcement
+        billingManager = BillingManager(
+            context = this,
+            onPurchaseSuccess = {},
+            onPurchaseCancelled = {},
+            onPurchaseError = {}
+        )
+
+        billingManager.connect(onReady = {
+            lifecycleScope.launch {
+                val isSubscribed = billingManager.checkSubscriptionStatus()
+                Log.d("BILLING_DEBUG", "MainActivity subscription check — isSubscribed=$isSubscribed")
+
+                if (!isSubscribed) {
+                    withContext(Dispatchers.Main) {
+                        Log.d("BILLING_DEBUG", "Not subscribed — redirecting to paywall")
+                        startActivity(
+                            Intent(this@MainActivity, OnboardingActivity::class.java)
+                                .putExtra("force_paywall", true)
+                        )
+                        finish()
+                    }
+                }
+            }
+        })
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::billingManager.isInitialized) billingManager.destroy()
     }
 
     @Composable

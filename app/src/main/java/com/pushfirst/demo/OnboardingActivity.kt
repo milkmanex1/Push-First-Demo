@@ -6,6 +6,10 @@ import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -43,26 +47,67 @@ import com.pushfirst.demo.ui.theme.PushFirstTheme
 
 private const val PREFS_NAME = "pushfirst_prefs"
 private const val KEY_ONBOARDING_DONE = "onboarding_done"
+private const val KEY_SUBSCRIPTION_ACTIVE = "subscription_active"
 
 class OnboardingActivity : ComponentActivity() {
 
-    private val SKIP_ONBOARDING_FOR_DEV = true
+    private val SKIP_ONBOARDING_FOR_DEV = false
+    private lateinit var billingManager: BillingManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // DEV FLAG: bypass onboarding entirely
+        // DEV FLAG: bypass onboarding and wipe all onboarding prefs so next run starts clean
         if (SKIP_ONBOARDING_FOR_DEV) {
+            getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .remove(KEY_ONBOARDING_DONE)
+                .remove(KEY_SUBSCRIPTION_ACTIVE)
+                .apply()
             launchMain()
             return
         }
 
-        // If onboarding already completed, go straight to MainActivity
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (prefs.getBoolean(KEY_ONBOARDING_DONE, false)) {
+        val forcePaywall = intent.getBooleanExtra("force_paywall", false)
+
+        // If onboarding already completed and we're not force-showing the paywall, go to main
+        if (prefs.getBoolean(KEY_ONBOARDING_DONE, false) && !forcePaywall) {
             launchMain()
             return
         }
+
+        billingManager = BillingManager(
+            context = this,
+            onPurchaseSuccess = {
+                Log.d("BILLING_DEBUG", "Purchase succeeded — saving state and launching main")
+                prefs.edit()
+                    .putBoolean(KEY_ONBOARDING_DONE, true)
+                    .putBoolean(KEY_SUBSCRIPTION_ACTIVE, true)
+                    .apply()
+                runOnUiThread { launchMain() }
+            },
+            onPurchaseCancelled = {
+                Log.d("BILLING_DEBUG", "Purchase cancelled — staying on paywall")
+            },
+            onPurchaseError = { message ->
+                Log.e("BILLING_DEBUG", "Purchase error: $message")
+            }
+        )
+
+        billingManager.connect(onReady = {
+            // On force_paywall (re-entry from MainActivity), check if user somehow already
+            // has an active subscription and let them through if so.
+            // On first-launch onboarding, never auto-skip — let the user complete the flow.
+            if (forcePaywall) {
+                lifecycleScope.launch {
+                    val isSubscribed = billingManager.checkSubscriptionStatus()
+                    if (isSubscribed) {
+                        Log.d("BILLING_DEBUG", "Active subscription confirmed — skipping paywall")
+                        withContext(Dispatchers.Main) { launchMain() }
+                    }
+                }
+            }
+        })
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
@@ -74,18 +119,22 @@ class OnboardingActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     OnboardingFlow(
-                        onFinish = {
-                            prefs.edit().putBoolean(KEY_ONBOARDING_DONE, true).apply()
-                            launchMain()
+                        startPage = if (forcePaywall) 2 else 0,
+                        onStartTrial = { planId ->
+                            billingManager.launchPurchaseFlow(this@OnboardingActivity, planId)
                         },
-                        onSkip = {
-                            prefs.edit().putBoolean(KEY_ONBOARDING_DONE, true).apply()
-                            launchMain()
+                        onRestore = {
+                            billingManager.restorePurchases()
                         }
                     )
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (::billingManager.isInitialized) billingManager.destroy()
     }
 
     private fun launchMain() {
@@ -96,10 +145,11 @@ class OnboardingActivity : ComponentActivity() {
 
 @Composable
 private fun OnboardingFlow(
-    onFinish: () -> Unit,
-    onSkip: () -> Unit
+    startPage: Int = 0,
+    onStartTrial: (planId: String) -> Unit,
+    onRestore: () -> Unit
 ) {
-    var page by remember { mutableIntStateOf(0) }
+    var page by remember { mutableIntStateOf(startPage) }
 
     AnimatedContent(
         targetState = page,
@@ -115,9 +165,9 @@ private fun OnboardingFlow(
         label = "onboarding_page"
     ) { currentPage ->
         when (currentPage) {
-            0 -> ValuePropScreen(onNext = { page = 1 })
-            1 -> HowItWorksScreen(onNext = { page = 2 })
-            2 -> PaywallScreen(onFinish = onFinish, onSkip = onSkip)
+            0 -> ValuePropScreen(onNext = { page = 1 }, onBack = null)
+            1 -> HowItWorksScreen(onNext = { page = 2 }, onBack = { page = 0 })
+            2 -> PaywallScreen(onStartTrial = onStartTrial, onRestore = onRestore, onBack = { page = 1 })
         }
     }
 }
@@ -125,7 +175,7 @@ private fun OnboardingFlow(
 // ─── Screen 1: Value Prop ───────────────────────────────────────────────────
 
 @Composable
-private fun ValuePropScreen(onNext: () -> Unit) {
+private fun ValuePropScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -134,10 +184,7 @@ private fun ValuePropScreen(onNext: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Page dots
-        PageIndicator(currentPage = 0, pageCount = 3)
+        OnboardingTopBar(currentPage = 0, pageCount = 3, onBack = onBack)
 
         Spacer(modifier = Modifier.weight(0.5f))
 
@@ -198,7 +245,7 @@ private fun ValuePropScreen(onNext: () -> Unit) {
 // ─── Screen 2: How It Works ─────────────────────────────────────────────────
 
 @Composable
-private fun HowItWorksScreen(onNext: () -> Unit) {
+private fun HowItWorksScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -207,9 +254,7 @@ private fun HowItWorksScreen(onNext: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
-
-        PageIndicator(currentPage = 1, pageCount = 3)
+        OnboardingTopBar(currentPage = 1, pageCount = 3, onBack = onBack)
 
         Spacer(modifier = Modifier.weight(0.3f))
 
@@ -292,8 +337,12 @@ private fun HowItWorksStep(emoji: String, title: String, subtitle: String) {
 // ─── Screen 3: Paywall ──────────────────────────────────────────────────────
 
 @Composable
-private fun PaywallScreen(onFinish: () -> Unit, onSkip: () -> Unit) {
-    var selectedPlan by remember { mutableStateOf("yearly") }
+private fun PaywallScreen(
+    onStartTrial: (planId: String) -> Unit,
+    onRestore: () -> Unit,
+    onBack: (() -> Unit)?
+) {
+    var selectedPlan by remember { mutableStateOf(BASE_PLAN_YEARLY) }
 
     Column(
         modifier = Modifier
@@ -303,9 +352,7 @@ private fun PaywallScreen(onFinish: () -> Unit, onSkip: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
-
-        PageIndicator(currentPage = 2, pageCount = 3)
+        OnboardingTopBar(currentPage = 2, pageCount = 3, onBack = onBack)
 
         Spacer(modifier = Modifier.weight(0.2f))
 
@@ -331,8 +378,8 @@ private fun PaywallScreen(onFinish: () -> Unit, onSkip: () -> Unit) {
                 period = "/mo",
                 subtext = null,
                 badge = null,
-                selected = selectedPlan == "monthly",
-                onClick = { selectedPlan = "monthly" }
+                selected = selectedPlan == BASE_PLAN_MONTHLY,
+                onClick = { selectedPlan = BASE_PLAN_MONTHLY }
             )
             PlanCard(
                 modifier = Modifier.weight(1f),
@@ -341,8 +388,8 @@ private fun PaywallScreen(onFinish: () -> Unit, onSkip: () -> Unit) {
                 period = "/mo",
                 subtext = "billed $35.99/year",
                 badge = "7 Days Free",
-                selected = selectedPlan == "yearly",
-                onClick = { selectedPlan = "yearly" }
+                selected = selectedPlan == BASE_PLAN_YEARLY,
+                onClick = { selectedPlan = BASE_PLAN_YEARLY }
             )
         }
 
@@ -383,10 +430,10 @@ private fun PaywallScreen(onFinish: () -> Unit, onSkip: () -> Unit) {
 
         // CTA
         GradientButton(
-            text = "Start 7-day FREE trial",
+            text = if (selectedPlan == BASE_PLAN_YEARLY) "Start 7-day FREE trial" else "Subscribe now",
             onClick = {
-                Log.d("Onboarding", "Start trial tapped — plan: $selectedPlan")
-                onFinish()
+                Log.d("BILLING_DEBUG", "Start trial tapped — plan: $selectedPlan")
+                onStartTrial(selectedPlan)
             },
             modifier = Modifier.fillMaxWidth()
         )
@@ -394,31 +441,15 @@ private fun PaywallScreen(onFinish: () -> Unit, onSkip: () -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
 
         // Bottom links
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Restore purchases",
-                fontSize = 13.sp,
-                color = Color(0xFF888888),
-                modifier = Modifier.clickable {
-                    Log.d("Onboarding", "Restore purchases tapped")
-                }
-            )
-            Text(
-                text = "  ·  ",
-                fontSize = 13.sp,
-                color = Color(0xFF555555)
-            )
-            Text(
-                text = "Skip",
-                fontSize = 13.sp,
-                color = Color(0xFF888888),
-                modifier = Modifier.clickable { onSkip() }
-            )
-        }
+        Text(
+            text = "Restore purchases",
+            fontSize = 13.sp,
+            color = Color(0xFF888888),
+            modifier = Modifier.clickable {
+                Log.d("BILLING_DEBUG", "Restore purchases tapped")
+                onRestore()
+            }
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
     }
@@ -583,11 +614,43 @@ private fun GradientButton(
     }
 }
 
+// ─── Shared: Top nav bar (back arrow + page dots) ───────────────────────────
+
+@Composable
+private fun OnboardingTopBar(currentPage: Int, pageCount: Int, onBack: (() -> Unit)?) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 8.dp)
+    ) {
+        if (onBack != null) {
+            Text(
+                text = "←",
+                fontSize = 24.sp,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onBack() }
+                    .padding(4.dp)
+            )
+        }
+        PageIndicator(
+            currentPage = currentPage,
+            pageCount = pageCount,
+            modifier = Modifier.align(Alignment.Center)
+        )
+    }
+}
+
 // ─── Shared: Page indicator dots ────────────────────────────────────────────
 
 @Composable
-private fun PageIndicator(currentPage: Int, pageCount: Int) {
+private fun PageIndicator(currentPage: Int, pageCount: Int, modifier: Modifier = Modifier) {
     Row(
+        modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
