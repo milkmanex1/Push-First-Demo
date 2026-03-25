@@ -730,17 +730,19 @@ fun UnlockScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "You earned it.",
-                fontSize = 36.sp,
+                text = "15 Minutes Unlocked.",
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "15 minutes. Your call.",
-                fontSize = 16.sp,
-                color = Color(0xFFAAAAAA),
-                textAlign = TextAlign.Center
+                text = "Your Call.",
+                fontSize = 36.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                lineHeight = 52.sp
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -762,7 +764,7 @@ fun UnlockScreen(
                     .padding(horizontal = 32.dp, vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "I don't need it", fontSize = 18.sp, color = Color.White)
+                Text(text = "I don't want it", fontSize = 18.sp, color = Color.White)
             }
 
             // Return button - ghost outlined
@@ -777,7 +779,7 @@ fun UnlockScreen(
                     .padding(horizontal = 32.dp, vertical = 16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "Return", fontSize = 18.sp, color = Color(0xFF999999))
+                Text(text = "Continue", fontSize = 18.sp, color = Color(0xFF999999))
             }
         }
     }

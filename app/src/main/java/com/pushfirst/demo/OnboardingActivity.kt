@@ -72,8 +72,10 @@ class OnboardingActivity : ComponentActivity() {
         val prefs = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val forcePaywall = intent.getBooleanExtra("force_paywall", false)
 
-        // If onboarding already completed and we're not force-showing the paywall, go to main
-        if (prefs.getBoolean(KEY_ONBOARDING_DONE, false) && !forcePaywall) {
+        // If onboarding already completed AND subscribed, go to main
+        if (prefs.getBoolean(KEY_ONBOARDING_DONE, false)
+            && prefs.getBoolean(KEY_SUBSCRIPTION_ACTIVE, false)
+            && !forcePaywall) {
             launchMain()
             return
         }
@@ -121,7 +123,11 @@ class OnboardingActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     OnboardingFlow(
-                        startPage = if (forcePaywall) 5 else 0,
+                        startPage = when {
+                        forcePaywall -> 5
+                        prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 5
+                        else -> 0
+                    },
                         onStartTrial = { planId ->
                             billingManager.launchPurchaseFlow(this@OnboardingActivity, planId)
                         },

@@ -1,8 +1,10 @@
 @file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 package com.pushfirst.demo
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
@@ -12,6 +14,8 @@ import android.util.Log
 import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -52,6 +56,11 @@ import com.pushfirst.demo.ui.theme.PushFirstTheme
 class MainActivity : ComponentActivity() {
 
     private lateinit var billingManager: BillingManager
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            // Permission result handled via refreshPermissions on resume
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -106,6 +115,7 @@ class MainActivity : ComponentActivity() {
     fun MainScreen() {
         var accessibilityEnabled by remember { mutableStateOf(false) }
         var overlayGranted by remember { mutableStateOf(false) }
+        var notificationGranted by remember { mutableStateOf(false) }
         var showAccessibilityDialog by remember { mutableStateOf(false) }
         var showWelcomeScreen by remember { mutableStateOf(true) }
         val lifecycleOwner = LocalLifecycleOwner.current
@@ -113,6 +123,14 @@ class MainActivity : ComponentActivity() {
         val refreshPermissions: () -> Unit = {
             accessibilityEnabled = BrowserDetectionService.isServiceEnabled(this@MainActivity)
             overlayGranted = Settings.canDrawOverlays(this@MainActivity)
+            notificationGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    this@MainActivity,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
         }
 
         LaunchedEffect(Unit) {
@@ -256,13 +274,13 @@ class MainActivity : ComponentActivity() {
 
                 if (!accessibilityEnabled) {
                     Text(
-                        text = "Settings → Accessibility → find \"PushFirst\" → toggle On",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Tap above, then look for 'Installed apps' or 'Downloaded apps' → select PushFirst",
+                        fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Start,
+                        textAlign = TextAlign.Center,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 8.dp)
+                            .padding(top = 4.dp)
                     )
                 }
 
@@ -294,9 +312,26 @@ class MainActivity : ComponentActivity() {
                     }
                 )
 
+                Spacer(modifier = Modifier.height(16.dp))
+
+                StatusCard(
+                    title = "Notifications",
+                    enabled = notificationGranted,
+                    description = "Shows unlock countdown timer",
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                            startActivity(intent)
+                        }
+                    }
+                )
+
                 Spacer(modifier = Modifier.height(32.dp))
 
-                if (accessibilityEnabled && overlayGranted) {
+                if (accessibilityEnabled && overlayGranted && notificationGranted) {
                     Text(
                         text = "✅ All set! You're protected.",
                         fontSize = 16.sp,

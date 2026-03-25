@@ -1,6 +1,7 @@
 package com.pushfirst.demo
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -91,7 +92,11 @@ class ControlRegainedActivity : ComponentActivity() {
                 val overlayIntent = Intent(this, BlockingOverlayService::class.java)
                 overlayIntent.putExtra("countdown_mode", true)
                 overlayIntent.putExtra("browser_package", packageName)
-                startService(overlayIntent)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(overlayIntent)
+                } else {
+                    startService(overlayIntent)
+                }
                 
                 // Move our task to back
                 moveTaskToBack(true)
