@@ -36,7 +36,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -55,6 +57,11 @@ class OnboardingActivity : ComponentActivity() {
 
     private val SKIP_ONBOARDING_FOR_DEV = false
     private lateinit var billingManager: BillingManager
+
+    // Prices populated from Play once product details load; Compose observes these automatically
+    private val monthlyPrice = androidx.compose.runtime.mutableStateOf<String?>(null)
+    private val yearlyTotal = androidx.compose.runtime.mutableStateOf<String?>(null)
+    private val yearlyMonthly = androidx.compose.runtime.mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,6 +105,13 @@ class OnboardingActivity : ComponentActivity() {
             }
         )
 
+        billingManager.onProductDetailsLoaded = {
+            monthlyPrice.value = billingManager.getFormattedPrice(BASE_PLAN_MONTHLY)
+            yearlyTotal.value = billingManager.getFormattedPrice(BASE_PLAN_YEARLY)
+            yearlyMonthly.value = billingManager.getYearlyMonthlyEquivalent()
+            Log.d("BILLING_DEBUG", "Prices loaded — monthly=${monthlyPrice.value} yearly=${yearlyTotal.value} yearlyMo=${yearlyMonthly.value}")
+        }
+
         billingManager.connect(onReady = {
             // On force_paywall (re-entry from MainActivity), check if user somehow already
             // has an active subscription and let them through if so.
@@ -124,10 +138,13 @@ class OnboardingActivity : ComponentActivity() {
                 ) {
                     OnboardingFlow(
                         startPage = when {
-                        forcePaywall -> 5
-                        prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 5
-                        else -> 0
-                    },
+                            forcePaywall -> 5
+                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 5
+                            else -> 0
+                        },
+                        monthlyPrice = monthlyPrice.value,
+                        yearlyTotal = yearlyTotal.value,
+                        yearlyMonthly = yearlyMonthly.value,
                         onStartTrial = { planId ->
                             billingManager.launchPurchaseFlow(this@OnboardingActivity, planId)
                         },
@@ -154,6 +171,9 @@ class OnboardingActivity : ComponentActivity() {
 @Composable
 private fun OnboardingFlow(
     startPage: Int = 0,
+    monthlyPrice: String?,
+    yearlyTotal: String?,
+    yearlyMonthly: String?,
     onStartTrial: (planId: String) -> Unit,
     onRestore: () -> Unit
 ) {
@@ -178,7 +198,14 @@ private fun OnboardingFlow(
             2 -> RealCostScreen(onNext = { page = 3 }, onBack = { page = 1 })
             3 -> WillpowerFailsScreen(onNext = { page = 4 }, onBack = { page = 2 })
             4 -> HowItWorksScreen(onNext = { page = 5 }, onBack = { page = 3 })
-            5 -> PaywallScreen(onStartTrial = onStartTrial, onRestore = onRestore, onBack = { page = 4 })
+            5 -> PaywallScreen(
+                monthlyPrice = monthlyPrice,
+                yearlyTotal = yearlyTotal,
+                yearlyMonthly = yearlyMonthly,
+                onStartTrial = onStartTrial,
+                onRestore = onRestore,
+                onBack = { page = 4 }
+            )
         }
     }
 }
@@ -573,11 +600,17 @@ private fun WillpowerFailsScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
 
 @Composable
 private fun PaywallScreen(
+    monthlyPrice: String?,
+    yearlyTotal: String?,
+    yearlyMonthly: String?,
     onStartTrial: (planId: String) -> Unit,
     onRestore: () -> Unit,
     onBack: (() -> Unit)?
 ) {
     var selectedPlan by remember { mutableStateOf(BASE_PLAN_YEARLY) }
+    val resolvedMonthly = monthlyPrice ?: "$9.99"
+    val resolvedYearlyTotal = yearlyTotal ?: "$35.99"
+    val resolvedYearlyMonthly = yearlyMonthly ?: "$2.99"
 
     Column(
         modifier = Modifier
@@ -611,7 +644,7 @@ private fun PaywallScreen(
             PlanCard(
                 modifier = Modifier.weight(1f),
                 label = "Monthly",
-                price = "$9.99",
+                price = resolvedMonthly,
                 period = "/mo",
                 subtext = null,
                 badge = null,
@@ -621,9 +654,9 @@ private fun PaywallScreen(
             PlanCard(
                 modifier = Modifier.weight(1f),
                 label = "Yearly",
-                price = "$2.99",
-                period = "/mo",
-                subtext = "billed $35.99/year",
+                price = resolvedYearlyTotal,
+                period = "/yr",
+                subtext = "$resolvedYearlyMonthly/mo",
                 badge = "7 Days Free",
                 selected = selectedPlan == BASE_PLAN_YEARLY,
                 onClick = { selectedPlan = BASE_PLAN_YEARLY }
@@ -663,6 +696,20 @@ private fun PaywallScreen(
             textAlign = TextAlign.Center
         )
 
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Dynamic subscription terms
+        Text(
+            text = if (selectedPlan == BASE_PLAN_YEARLY)
+                "7-day free trial, then $resolvedYearlyTotal/year ($resolvedYearlyMonthly/mo). Cancel anytime in Google Play settings. You won't be charged during the trial period."
+            else
+                "$resolvedMonthly/month. Cancel anytime in Google Play settings.",
+            fontSize = 12.sp,
+            color = Color(0xFF666666),
+            textAlign = TextAlign.Center,
+            lineHeight = 18.sp
+        )
+
         Spacer(modifier = Modifier.weight(1f))
 
         // CTA
@@ -675,7 +722,40 @@ private fun PaywallScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Legal links
+        val uriHandler = LocalUriHandler.current
+        val legalText = buildAnnotatedString {
+            append("By subscribing, you agree to our ")
+            pushStringAnnotation(tag = "URL", annotation = "https://pushfirst.netlify.app/terms")
+            withStyle(SpanStyle(color = Color(0xFF888888), fontWeight = FontWeight.SemiBold)) {
+                append("Terms of Service")
+            }
+            pop()
+            append(" and ")
+            pushStringAnnotation(tag = "URL", annotation = "https://pushfirst.netlify.app/privacy")
+            withStyle(SpanStyle(color = Color(0xFF888888), fontWeight = FontWeight.SemiBold)) {
+                append("Privacy Policy")
+            }
+            pop()
+            append(".")
+        }
+        ClickableText(
+            text = legalText,
+            style = androidx.compose.ui.text.TextStyle(
+                fontSize = 11.sp,
+                color = Color(0xFF555555),
+                textAlign = TextAlign.Center
+            ),
+            onClick = { offset ->
+                legalText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                    .firstOrNull()?.let { uriHandler.openUri(it.item) }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         // Bottom links
         Text(
@@ -757,7 +837,7 @@ private fun PlanCard(
                 Text(
                     text = subtext ?: "",
                     fontSize = 11.sp,
-                    color = Color(0xFF666666),
+                    color = Color(0xFFAAAAAA),
                     textAlign = TextAlign.Center,
                     minLines = 1,
                     maxLines = 1

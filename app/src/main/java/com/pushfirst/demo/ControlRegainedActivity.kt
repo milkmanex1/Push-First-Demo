@@ -189,6 +189,15 @@ fun ControlRegainedScreen(
             )
         }
 
+        // Subtle grey overlay for Stoic mode — improves text/button readability
+        if (isStoic) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x55000000))
+            )
+        }
+
         // Dark gradient overlay - only show when Is_Stoic is false
         if (!isStoic) {
             Box(
@@ -223,14 +232,14 @@ fun ControlRegainedScreen(
             ) {
                 Text(
                     text = "Not today.",
-                    fontSize = 36.sp,
+                    fontSize = 47.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     textAlign = TextAlign.Center
                 )
                 Text(
                     text = "The urge lost. You didn't.",
-                    fontSize = 18.sp,
+                    fontSize = 23.sp,
                     color = Color(0xFFAAAAAA),
                     textAlign = TextAlign.Center
                 )
@@ -279,14 +288,14 @@ fun ControlRegainedScreen(
             ) {
                 Text(
                     text = "Not today.",
-                    fontSize = 36.sp,
+                    fontSize = 47.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
                     textAlign = TextAlign.Center
                 )
                 Text(
                     text = "The urge lost. You didn't.",
-                    fontSize = 18.sp,
+                    fontSize = 23.sp,
                     color = Color(0xFFAAAAAA),
                     textAlign = TextAlign.Center
                 )

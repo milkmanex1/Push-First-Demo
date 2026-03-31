@@ -22,6 +22,9 @@ class BillingManager(
     // Cached after queryProductDetails()
     private var productDetailsList: List<ProductDetails>? = null
 
+    /** Called on main thread once product details are loaded from Play. */
+    var onProductDetailsLoaded: (() -> Unit)? = null
+
     private val purchasesUpdatedListener = PurchasesUpdatedListener { billingResult, purchases ->
         Log.d(TAG, "onPurchasesUpdated — code=${billingResult.responseCode} msg=${billingResult.debugMessage}")
         when (billingResult.responseCode) {
@@ -119,6 +122,7 @@ class BillingManager(
                     Log.d(TAG, "    BasePlan=${offer.basePlanId} offerToken=${offer.offerToken.take(20)}…")
                 }
             }
+            withContext(Dispatchers.Main) { onProductDetailsLoaded?.invoke() }
         } else {
             Log.e(TAG, "queryProductDetails failed: ${result.billingResult.debugMessage}")
         }
@@ -215,6 +219,30 @@ class BillingManager(
             onPurchaseSuccess()
         } else if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
             Log.d(TAG, "Purchase is PENDING — waiting for completion")
+        }
+    }
+
+    // ── Price helpers ─────────────────────────────────────────────────────────
+
+    /** Returns the recurring formatted price for a base plan (e.g. "$9.99" for monthly). */
+    fun getFormattedPrice(basePlanId: String): String? {
+        val product = productDetailsList?.firstOrNull { it.productId == PRODUCT_ID } ?: return null
+        val offer = product.subscriptionOfferDetails?.firstOrNull { it.basePlanId == basePlanId } ?: return null
+        return offer.pricingPhases.pricingPhaseList.lastOrNull()?.formattedPrice
+    }
+
+    /** Returns the per-month equivalent of the yearly plan price (annual / 12). */
+    fun getYearlyMonthlyEquivalent(): String? {
+        val product = productDetailsList?.firstOrNull { it.productId == PRODUCT_ID } ?: return null
+        val offer = product.subscriptionOfferDetails?.firstOrNull { it.basePlanId == BASE_PLAN_YEARLY } ?: return null
+        val phase = offer.pricingPhases.pricingPhaseList.lastOrNull() ?: return null
+        val monthlyMicros = phase.priceAmountMicros / 12
+        val amount = monthlyMicros / 1_000_000.0
+        return try {
+            val symbol = java.util.Currency.getInstance(phase.priceCurrencyCode).symbol
+            "$symbol${String.format(java.util.Locale.US, "%.2f", amount)}"
+        } catch (e: Exception) {
+            "\$${String.format(java.util.Locale.US, "%.2f", amount)}"
         }
     }
 

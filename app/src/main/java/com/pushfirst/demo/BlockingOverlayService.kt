@@ -244,30 +244,31 @@ class BlockingOverlayService : Service() {
         }
         
         val domainText = TextView(applicationContext).apply {
-            val fullText = "You tried to visit: $blockedDomain"
-            val spannableString = SpannableString(fullText)
-            
-            // Find the domain name part and make it bold and brighter color
-            val domainStartIndex = fullText.indexOf(blockedDomain)
-            val domainEndIndex = domainStartIndex + blockedDomain.length
-            
-            // Make domain name bold
-            spannableString.setSpan(
-                StyleSpan(android.graphics.Typeface.BOLD),
-                domainStartIndex,
-                domainEndIndex,
-                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            
-            // Change domain name color to a brighter white/cyan for emphasis
-            spannableString.setSpan(
-                ForegroundColorSpan(0xFF4FC3F7.toInt()), // Light blue/cyan color
-                domainStartIndex,
-                domainEndIndex,
-                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            
-            text = spannableString
+            if (AppConfig.CENSOR_SITE_NAME) {
+                text = "You tried to visit a forbidden website."
+            } else {
+                val fullText = "You tried to visit: $blockedDomain"
+                val spannableString = SpannableString(fullText)
+
+                val domainStartIndex = fullText.indexOf(blockedDomain)
+                val domainEndIndex = domainStartIndex + blockedDomain.length
+
+                spannableString.setSpan(
+                    StyleSpan(android.graphics.Typeface.BOLD),
+                    domainStartIndex,
+                    domainEndIndex,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+
+                spannableString.setSpan(
+                    ForegroundColorSpan(0xFF4FC3F7.toInt()),
+                    domainStartIndex,
+                    domainEndIndex,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+
+                text = spannableString
+            }
             textSize = 16f
             gravity = android.view.Gravity.CENTER
             setTextColor(0xFF999999.toInt()) // Gray color for the rest of the text

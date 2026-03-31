@@ -11,7 +11,7 @@ android {
         applicationId = "com.pushfirst.demo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
+        versionCode = 10
         versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -45,6 +45,9 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            useLegacyPackaging = false
         }
     }
 }
