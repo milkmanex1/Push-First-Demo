@@ -558,6 +558,42 @@ class BlockingOverlayService : Service() {
         val countdownDurationMs = 10_000L // 10 seconds
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         
+        // Schedule exact OS alarm for reblock at expiry (independent of UI thread)
+        try {
+            val am = getSystemService(android.content.Context.ALARM_SERVICE) as android.app.AlarmManager
+            val baseTime = System.currentTimeMillis()
+            val alarmIntent = Intent(this, ReblockAlarmReceiver::class.java).let { intent ->
+                android.app.PendingIntent.getBroadcast(
+                    this,
+                    1001,
+                    intent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+            }
+            val backupIntent = Intent(this, ReblockAlarmReceiver::class.java).let { intent ->
+                android.app.PendingIntent.getBroadcast(
+                    this,
+                    1002,
+                    intent,
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                )
+            }
+            val triggerAt = baseTime + countdownDurationMs + 50L
+            val backupAt = baseTime + countdownDurationMs + 2050L
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, triggerAt, alarmIntent)
+                am.setExactAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, backupAt, backupIntent)
+            } else {
+                @Suppress("DEPRECATION")
+                am.setExact(android.app.AlarmManager.RTC_WAKEUP, triggerAt, alarmIntent)
+                @Suppress("DEPRECATION")
+                am.setExact(android.app.AlarmManager.RTC_WAKEUP, backupAt, backupIntent)
+            }
+            android.util.Log.d(TAG, "Scheduled exact reblock alarm at $triggerAt and backup at $backupAt")
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Failed to schedule exact reblock alarm: ${e.message}", e)
+        }
+        
         val countdownRunnable = object : Runnable {
             override fun run() {
                 val elapsed = System.currentTimeMillis() - startTime

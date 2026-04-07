@@ -94,4 +94,15 @@ object UnlockManager {
         val now = System.currentTimeMillis()
         return now < bypassUntil
     }
+
+    /**
+     * Get remaining bypass duration in milliseconds (0 if no active bypass).
+     */
+    fun getBlockingBypassRemainingMs(context: Context): Long {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val bypassUntil = prefs.getLong(KEY_BLOCKING_BYPASS_UNTIL, 0L)
+        if (bypassUntil == 0L) return 0L
+        val remaining = bypassUntil - System.currentTimeMillis()
+        return if (remaining > 0) remaining else 0L
+    }
 }

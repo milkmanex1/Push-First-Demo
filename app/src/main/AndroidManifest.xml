@@ -101,6 +101,11 @@
             android:exported="false"
             android:foregroundServiceType="specialUse" />
 
+        <!-- Reblock alarm receiver -->
+        <receiver
+            android:name=".ReblockAlarmReceiver"
+            android:exported="false" />
+
     </application>
 
 </manifest>
