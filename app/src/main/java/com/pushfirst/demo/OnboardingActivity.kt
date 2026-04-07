@@ -36,7 +36,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.SpanStyle
@@ -52,6 +62,24 @@ import com.pushfirst.demo.ui.theme.PushFirstTheme
 private const val PREFS_NAME = "pushfirst_prefs"
 private const val KEY_ONBOARDING_DONE = "onboarding_done"
 private const val KEY_SUBSCRIPTION_ACTIVE = "subscription_active"
+private const val TOTAL_ONBOARDING_PAGES = 27
+
+// ─── Onboarding answer store ─────────────────────────────────────────────────
+
+class OnboardingViewModel {
+    var userName by mutableStateOf("")
+    var gender by mutableStateOf("")
+    var pornFrequency by mutableStateOf("")
+    var ageFirstExposure by mutableStateOf("")
+    var escalationShift by mutableStateOf(false)
+    var arousedWithoutPorn by mutableStateOf("")
+    var symptoms by mutableStateOf<List<String>>(emptyList())
+    var triedToQuit by mutableStateOf<List<String>>(emptyList())
+    var feelingsAfter by mutableStateOf<List<String>>(emptyList())
+    var goals by mutableStateOf<List<String>>(emptyList())
+    var referralSource by mutableStateOf("")
+    var reminderTime by mutableStateOf("")
+}
 
 class OnboardingActivity : ComponentActivity() {
 
@@ -138,8 +166,8 @@ class OnboardingActivity : ComponentActivity() {
                 ) {
                     OnboardingFlow(
                         startPage = when {
-                            forcePaywall -> 5
-                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 5
+                            forcePaywall -> 12
+                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 12
                             else -> 0
                         },
                         monthlyPrice = monthlyPrice.value,
@@ -178,6 +206,7 @@ private fun OnboardingFlow(
     onRestore: () -> Unit
 ) {
     var page by remember { mutableIntStateOf(startPage) }
+    val viewModel = remember { OnboardingViewModel() }
 
     AnimatedContent(
         targetState = page,
@@ -193,19 +222,338 @@ private fun OnboardingFlow(
         label = "onboarding_page"
     ) { currentPage ->
         when (currentPage) {
-            0 -> ValuePropScreen(onNext = { page = 1 }, onBack = null)
-            1 -> PornIsDrugScreen(onNext = { page = 2 }, onBack = { page = 0 })
-            2 -> RealCostScreen(onNext = { page = 3 }, onBack = { page = 1 })
-            3 -> WillpowerFailsScreen(onNext = { page = 4 }, onBack = { page = 2 })
-            4 -> HowItWorksScreen(onNext = { page = 5 }, onBack = { page = 3 })
-            5 -> PaywallScreen(
+            0 -> SplashScreen(onNext = { page = 1 })
+            1 -> NameInputScreen(viewModel = viewModel, onNext = { page = 2 }, onBack = { page = 0 })
+            2 -> GenderScreen(viewModel = viewModel, onNext = { page = 3 }, onBack = { page = 1 })
+            3 -> PornFrequencyScreen(viewModel = viewModel, onNext = { page = 4 }, onBack = { page = 2 })
+            4 -> AgeFirstExposureScreen(viewModel = viewModel, onNext = { page = 5 }, onBack = { page = 3 })
+            5 -> EscalationScreen(viewModel = viewModel, onNext = { page = 6 }, onBack = { page = 4 })
+            6 -> TriedToQuitScreen(viewModel = viewModel, onNext = { page = 7 }, onBack = { page = 5 })
+            7 -> FeelingsScreen(viewModel = viewModel, onNext = { page = 8 }, onBack = { page = 6 })
+            8 -> SymptomsScreen(viewModel = viewModel, onNext = { page = 9 }, onBack = { page = 7 })
+            9 -> EducationCarouselScreen(onNext = { page = 10 }, onBack = { page = 8 })
+            10 -> WillpowerFailsScreen(onNext = { page = 11 }, onBack = { page = 9 })
+            11 -> HowItWorksScreen(onNext = { page = 12 }, onBack = { page = 10 })
+            12 -> PaywallScreen(
                 monthlyPrice = monthlyPrice,
                 yearlyTotal = yearlyTotal,
                 yearlyMonthly = yearlyMonthly,
                 onStartTrial = onStartTrial,
                 onRestore = onRestore,
-                onBack = { page = 4 }
+                onBack = { page = 11 }
             )
+        }
+    }
+}
+
+// ─── Shared: Starry background ──────────────────────────────────────────────
+
+@Composable
+private fun StarryBackground(content: @Composable BoxScope.() -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.radialGradient(
+                    colors = listOf(Color(0xFF0D1A3A), Color(0xFF060A14)),
+                    radius = 1800f
+                )
+            )
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val rng = java.util.Random(12345L)
+            repeat(100) {
+                drawCircle(
+                    color = Color.White.copy(alpha = rng.nextFloat() * 0.5f + 0.1f),
+                    radius = rng.nextFloat() * 1.8f + 0.4f,
+                    center = Offset(rng.nextFloat() * size.width, rng.nextFloat() * size.height)
+                )
+            }
+        }
+        content()
+    }
+}
+
+// ─── Shared: Quiz top bar (back arrow + linear progress bar) ────────────────
+
+@Composable
+private fun QuizTopBar(currentPage: Int, totalPages: Int, onBack: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "←",
+            fontSize = 24.sp,
+            color = Color.White,
+            modifier = Modifier
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onBack() }
+                .padding(end = 16.dp)
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(6.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xFF1E2044))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction = (currentPage.toFloat() / totalPages).coerceIn(0f, 1f))
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF00BFFF), Color(0xFF00FFCC))
+                        )
+                    )
+            )
+        }
+    }
+}
+
+// ─── Screen: Splash ──────────────────────────────────────────────────────────
+
+@Composable
+private fun SplashScreen(onNext: () -> Unit) {
+    StarryBackground {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Spacer(modifier = Modifier.height(56.dp))
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "💪", fontSize = 56.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "PushFirst",
+                    fontSize = 38.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    letterSpacing = 2.sp
+                )
+            }
+
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = Color.White)) { append("Replace every urge\nwith a ") }
+                    withStyle(SpanStyle(color = Color(0xFF00D4FF))) { append("rep.") }
+                },
+                fontSize = 32.sp,
+                fontWeight = FontWeight.ExtraBold,
+                textAlign = TextAlign.Center,
+                lineHeight = 42.sp
+            )
+
+            Column {
+                GradientButton(
+                    text = "Get Started  →",
+                    onClick = onNext,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(48.dp))
+            }
+        }
+    }
+}
+
+// ─── Screen: Name Input ──────────────────────────────────────────────────────
+
+@Composable
+private fun NameInputScreen(
+    viewModel: OnboardingViewModel,
+    onNext: () -> Unit,
+    onBack: () -> Unit
+) {
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            QuizTopBar(currentPage = 1, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 28.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(28.dp))
+                    Text(
+                        text = "First things first,",
+                        fontSize = 16.sp,
+                        color = Color(0xFF888888)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "What should we\ncall you?",
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        lineHeight = 38.sp
+                    )
+                }
+
+                OutlinedTextField(
+                    value = viewModel.userName,
+                    onValueChange = { viewModel.userName = it },
+                    placeholder = { Text("Name", color = Color(0xFF666666)) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(50),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White,
+                        focusedBorderColor = Color(0xFF00D4FF),
+                        unfocusedBorderColor = Color(0xFF333355),
+                        cursorColor = Color(0xFF00D4FF),
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Column {
+                    val enabled = viewModel.userName.isNotBlank()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                if (enabled)
+                                    Brush.horizontalGradient(listOf(Color(0xFF4B0082), Color(0xFF4169E1)))
+                                else
+                                    Brush.horizontalGradient(listOf(Color(0xFF2A2A2A), Color(0xFF333333)))
+                            )
+                            .clickable(
+                                enabled = enabled,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = if (enabled) rememberRipple(color = Color.White) else null
+                            ) { if (enabled) onNext() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Continue",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (enabled) Color.White else Color(0xFF555555)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(48.dp))
+                }
+            }
+        }
+    }
+}
+
+// ─── Screen: Gender ──────────────────────────────────────────────────────────
+
+@Composable
+private fun GenderScreen(
+    viewModel: OnboardingViewModel,
+    onNext: () -> Unit,
+    onBack: () -> Unit
+) {
+    val options = listOf("Male", "Female", "Other")
+
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            QuizTopBar(currentPage = 2, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 28.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(28.dp))
+                    Text(
+                        text = "Tell us about yourself,",
+                        fontSize = 16.sp,
+                        color = Color(0xFF888888)
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "What's your gender?",
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        lineHeight = 38.sp
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    options.forEach { option ->
+                        val selected = viewModel.gender == option
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(58.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (selected) Color(0xFF00D4FF).copy(alpha = 0.12f)
+                                    else Color(0xFF111122)
+                                )
+                                .border(
+                                    width = if (selected) 2.dp else 1.dp,
+                                    color = if (selected) Color(0xFF00D4FF) else Color(0xFF2A2A44),
+                                    shape = RoundedCornerShape(50)
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(color = Color(0xFF00D4FF))
+                                ) { viewModel.gender = option },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = option,
+                                fontSize = 16.sp,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selected) Color(0xFF00D4FF) else Color.White
+                            )
+                        }
+                    }
+                }
+
+                Column {
+                    val enabled = viewModel.gender.isNotBlank()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                if (enabled)
+                                    Brush.horizontalGradient(listOf(Color(0xFF4B0082), Color(0xFF4169E1)))
+                                else
+                                    Brush.horizontalGradient(listOf(Color(0xFF2A2A2A), Color(0xFF333333)))
+                            )
+                            .clickable(
+                                enabled = enabled,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = if (enabled) rememberRipple(color = Color.White) else null
+                            ) { if (enabled) onNext() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Continue",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (enabled) Color.White else Color(0xFF555555)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(48.dp))
+                }
+            }
         }
     }
 }
@@ -520,6 +868,838 @@ private fun RealCostScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
         )
 
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+// ─── Shared: Single-select quiz screen builder ──────────────────────────────
+//  Reused by PornFrequency, AgeFirstExposure, and Escalation screens.
+
+@Composable
+private fun SingleSelectQuizScreen(
+    currentPage: Int,
+    subtext: String,
+    question: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    onNext: () -> Unit,
+    onBack: () -> Unit,
+    autoAdvance: Boolean = false
+) {
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            QuizTopBar(currentPage = currentPage, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 28.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(28.dp))
+                    Text(text = subtext, fontSize = 16.sp, color = Color(0xFF888888))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = question,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        lineHeight = 36.sp
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    options.forEach { option ->
+                        val isSelected = selected == option
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(58.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (isSelected) Color(0xFF00D4FF).copy(alpha = 0.12f)
+                                    else Color(0xFF111122)
+                                )
+                                .border(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) Color(0xFF00D4FF) else Color(0xFF2A2A44),
+                                    shape = RoundedCornerShape(50)
+                                )
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(color = Color(0xFF00D4FF))
+                                ) { onSelect(option) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = option,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color(0xFF00D4FF) else Color.White,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (!autoAdvance) {
+                    Column {
+                        val enabled = selected.isNotBlank()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp)
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(
+                                    if (enabled)
+                                        Brush.horizontalGradient(listOf(Color(0xFF4B0082), Color(0xFF4169E1)))
+                                    else
+                                        Brush.horizontalGradient(listOf(Color(0xFF2A2A2A), Color(0xFF333333)))
+                                )
+                                .clickable(
+                                    enabled = enabled,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = if (enabled) rememberRipple(color = Color.White) else null
+                                ) { if (enabled) onNext() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Continue",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (enabled) Color.White else Color(0xFF555555)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(48.dp))
+                    }
+                } else {
+                    Spacer(modifier = Modifier.height(48.dp))
+                }
+            }
+        }
+    }
+}
+
+// ─── Screen: Porn Frequency ──────────────────────────────────────────────────
+
+@Composable
+private fun PornFrequencyScreen(
+    viewModel: OnboardingViewModel,
+    onNext: () -> Unit,
+    onBack: () -> Unit
+) {
+    SingleSelectQuizScreen(
+        currentPage = 3,
+        subtext = "Now let's understand your habits,",
+        question = "How often do you watch porn?",
+        options = listOf(
+            "More than once a day",
+            "Once a day",
+            "A few times a week",
+            "Less than once a week"
+        ),
+        selected = viewModel.pornFrequency,
+        onSelect = { viewModel.pornFrequency = it },
+        onNext = onNext,
+        onBack = onBack
+    )
+}
+
+// ─── Screen: Age First Exposure ──────────────────────────────────────────────
+
+@Composable
+private fun AgeFirstExposureScreen(
+    viewModel: OnboardingViewModel,
+    onNext: () -> Unit,
+    onBack: () -> Unit
+) {
+    SingleSelectQuizScreen(
+        currentPage = 4,
+        subtext = "Let's understand your history,",
+        question = "At what age did you first encounter explicit content?",
+        options = listOf("12 or younger", "13 to 16", "17 to 24", "25 or older"),
+        selected = viewModel.ageFirstExposure,
+        onSelect = { viewModel.ageFirstExposure = it },
+        onNext = onNext,
+        onBack = onBack
+    )
+}
+
+// ─── Screen: Escalation ──────────────────────────────────────────────────────
+
+@Composable
+private fun EscalationScreen(
+    viewModel: OnboardingViewModel,
+    onNext: () -> Unit,
+    onBack: () -> Unit
+) {
+    var localSelection by remember { mutableStateOf(if (viewModel.escalationShift) "Yes" else "") }
+    val scope = rememberCoroutineScope()
+
+    SingleSelectQuizScreen(
+        currentPage = 5,
+        subtext = "Be honest with yourself,",
+        question = "Have you noticed a shift toward more extreme or graphic material?",
+        options = listOf("Yes", "No"),
+        selected = localSelection,
+        onSelect = { choice ->
+            localSelection = choice
+            viewModel.escalationShift = (choice == "Yes")
+            scope.launch {
+                kotlinx.coroutines.delay(300)
+                onNext()
+            }
+        },
+        onNext = onNext,
+        onBack = onBack,
+        autoAdvance = true
+    )
+}
+
+// ─── Screen: Symptoms ────────────────────────────────────────────────────────
+
+// Triple = (textBeforeBold, boldText, textAfterBold)
+private val SYMPTOM_SECTIONS = listOf(
+    "Mental" to listOf(
+        Triple("Feeling ", "unmotivated", ""),
+        Triple("", "Lack of ambition", " to pursue goals"),
+        Triple("Difficulty ", "concentrating", ""),
+        Triple("", "Poor memory", " or 'brain fog'"),
+        Triple("General ", "anxiety", "")
+    ),
+    "Physical" to listOf(
+        Triple("", "Tiredness", " and lethargy"),
+        Triple("", "Low libido", " or sex drive"),
+        Triple("", "Weak erections", " without porn"),
+        Triple("Low energy", "", " / fatigue"),
+        Triple("Disrupted ", "sleep", "")
+    ),
+    "Social" to listOf(
+        Triple("", "Low self-confidence", ""),
+        Triple("", "Feeling unattractive", " or unworthy of love"),
+        Triple("", "Unsuccessful", " or unenjoyable sex"),
+        Triple("", "Reduced desire", " to socialize"),
+        Triple("", "Feeling isolated", " from others")
+    )
+)
+
+@Composable
+private fun SymptomsScreen(
+    viewModel: OnboardingViewModel,
+    onNext: () -> Unit,
+    onBack: () -> Unit
+) {
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Fixed top bar — no progress bar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "←",
+                    fontSize = 24.sp,
+                    color = Color.White,
+                    modifier = Modifier
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onBack() }
+                        .padding(end = 16.dp)
+                )
+                Text(
+                    text = "Symptoms",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center
+                )
+                // Spacer to balance the back arrow width
+                Spacer(modifier = Modifier.width(40.dp))
+            }
+
+            // Scrollable symptom list
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                // Red alert banner
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xFFCC2222))
+                            .padding(horizontal = 18.dp, vertical = 16.dp)
+                    ) {
+                        Text(
+                            text = "Excessive porn use can have negative impacts psychologically.",
+                            fontSize = 15.sp,
+                            color = Color.White,
+                            lineHeight = 22.sp
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Select any symptoms below:",
+                        fontSize = 16.sp,
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+
+                SYMPTOM_SECTIONS.forEach { (category, items) ->
+                    item {
+                        Text(
+                            text = category,
+                            fontSize = 15.sp,
+                            color = Color(0xFF888888),
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                        )
+                    }
+                    items.forEach { (before, boldWord, after) ->
+                        val label = before + boldWord + after
+                        item {
+                            val isSelected = label in viewModel.symptoms
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(50))
+                                    .background(Color(0xFF111122))
+                                    .border(1.dp, Color(0xFF2A2A44), RoundedCornerShape(50))
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = rememberRipple(color = Color(0xFFCC2222))
+                                    ) {
+                                        viewModel.symptoms = if (isSelected)
+                                            viewModel.symptoms - label
+                                        else
+                                            viewModel.symptoms + label
+                                    }
+                                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Circle radio indicator
+                                Box(
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(if (isSelected) Color(0xFFCC2222) else Color.Transparent)
+                                        .border(2.dp, if (isSelected) Color(0xFFCC2222) else Color(0xFF666688), RoundedCornerShape(50)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelected) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(10.dp)
+                                                .clip(RoundedCornerShape(50))
+                                                .background(Color.White)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Text(
+                                    text = buildAnnotatedString {
+                                        withStyle(SpanStyle(color = Color.White)) { append(before) }
+                                        withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append(boldWord) }
+                                        withStyle(SpanStyle(color = Color.White)) { append(after) }
+                                    },
+                                    fontSize = 15.sp,
+                                    lineHeight = 22.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fixed bottom button
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .navigationBarsPadding()
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color(0xFFCC2222))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = rememberRipple(color = Color.White)
+                    ) { onNext() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Reboot my brain",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+// ─── Screen: Tried To Quit ────────────────────────────────────────────────────
+
+@Composable
+private fun TriedToQuitScreen(
+    viewModel: OnboardingViewModel,
+    onNext: () -> Unit,
+    onBack: () -> Unit
+) {
+    val options = listOf(
+        "Nothing yet",
+        "Willpower alone",
+        "Screen time limiters",
+        "Cold turkey",
+        "Accountability partners",
+        "Other apps"
+    )
+
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            QuizTopBar(currentPage = 7, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 28.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(28.dp))
+                    Text(
+                        text = "You said these symptoms sound familiar, so I'd like to ask:",
+                        fontSize = 15.sp,
+                        color = Color(0xFF888888),
+                        lineHeight = 22.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "What have you already tried to quit?",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        lineHeight = 36.sp
+                    )
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    options.forEach { option ->
+                        val isSelected = option in viewModel.triedToQuit
+                        val atMax = viewModel.triedToQuit.size >= 3 && !isSelected
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (isSelected) Color(0xFF00D4FF).copy(alpha = 0.12f)
+                                    else Color(0xFF111122)
+                                )
+                                .border(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) Color(0xFF00D4FF) else Color(0xFF2A2A44),
+                                    shape = RoundedCornerShape(50)
+                                )
+                                .clickable(
+                                    enabled = !atMax,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(color = Color(0xFF00D4FF))
+                                ) {
+                                    viewModel.triedToQuit = if (isSelected)
+                                        viewModel.triedToQuit - option
+                                    else
+                                        viewModel.triedToQuit + option
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = option,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color(0xFF00D4FF) else if (atMax) Color(0xFF444466) else Color.White
+                            )
+                        }
+                    }
+                }
+
+                Column {
+                    val enabled = viewModel.triedToQuit.isNotEmpty()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                if (enabled)
+                                    Brush.horizontalGradient(listOf(Color(0xFF4B0082), Color(0xFF4169E1)))
+                                else
+                                    Brush.horizontalGradient(listOf(Color(0xFF2A2A2A), Color(0xFF333333)))
+                            )
+                            .clickable(
+                                enabled = enabled,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = if (enabled) rememberRipple(color = Color.White) else null
+                            ) { if (enabled) onNext() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Continue",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (enabled) Color.White else Color(0xFF555555)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(48.dp))
+                }
+            }
+        }
+    }
+}
+
+// ─── Screen: Feelings After ───────────────────────────────────────────────────
+
+@Composable
+private fun FeelingsScreen(
+    viewModel: OnboardingViewModel,
+    onNext: () -> Unit,
+    onBack: () -> Unit
+) {
+    val options = listOf(
+        "😣" to "Guilty",
+        "😶" to "Empty",
+        "😔" to "Ashamed",
+        "😞" to "Unmotivated",
+        "😤" to "Like I wasted time",
+        "😰" to "Anxious"
+    )
+
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            QuizTopBar(currentPage = 8, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 28.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(28.dp))
+                    Text(text = "Let's zoom in...", fontSize = 16.sp, color = Color(0xFF888888))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "How does watching porn make you feel afterward?",
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        lineHeight = 36.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(text = "Choose up to 2", fontSize = 14.sp, color = Color(0xFF666688))
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    options.forEach { (emoji, label) ->
+                        val isSelected = label in viewModel.feelingsAfter
+                        val atMax = viewModel.feelingsAfter.size >= 2 && !isSelected
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (isSelected) Color(0xFF00D4FF).copy(alpha = 0.12f)
+                                    else Color(0xFF111122)
+                                )
+                                .border(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) Color(0xFF00D4FF) else Color(0xFF2A2A44),
+                                    shape = RoundedCornerShape(50)
+                                )
+                                .clickable(
+                                    enabled = !atMax,
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = rememberRipple(color = Color(0xFF00D4FF))
+                                ) {
+                                    viewModel.feelingsAfter = if (isSelected)
+                                        viewModel.feelingsAfter - label
+                                    else
+                                        viewModel.feelingsAfter + label
+                                }
+                                .padding(horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = emoji, fontSize = 20.sp)
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Text(
+                                text = label,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color(0xFF00D4FF) else if (atMax) Color(0xFF444466) else Color.White
+                            )
+                        }
+                    }
+                }
+
+                Column {
+                    val enabled = viewModel.feelingsAfter.isNotEmpty()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                if (enabled)
+                                    Brush.horizontalGradient(listOf(Color(0xFF4B0082), Color(0xFF4169E1)))
+                                else
+                                    Brush.horizontalGradient(listOf(Color(0xFF2A2A2A), Color(0xFF333333)))
+                            )
+                            .clickable(
+                                enabled = enabled,
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = if (enabled) rememberRipple(color = Color.White) else null
+                            ) { if (enabled) onNext() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Continue",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (enabled) Color.White else Color(0xFF555555)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(48.dp))
+                }
+            }
+        }
+    }
+}
+
+// ─── Shared: Education slide (full-screen solid color, emoji hero) ───────────
+
+@Composable
+private fun EducationSlide(
+    currentPage: Int,
+    bgColor: Color,
+    emoji: String,
+    title: String,
+    body: String,
+    useGradientButton: Boolean = false,
+    onNext: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(bgColor)
+            .systemBarsPadding()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+
+            Text(text = emoji, fontSize = 80.sp, textAlign = TextAlign.Center)
+
+            Spacer(modifier = Modifier.weight(0.6f))
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = title,
+                    fontSize = 26.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 34.sp
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                Text(
+                    text = body,
+                    fontSize = 16.sp,
+                    color = Color.White.copy(alpha = 0.9f),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 24.sp
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            PageIndicator(
+                currentPage = currentPage,
+                pageCount = 17,
+                modifier = Modifier.padding(bottom = 20.dp)
+            )
+
+            if (useGradientButton) {
+                GradientButton(
+                    text = "Next  >",
+                    onClick = onNext,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.White)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = rememberRipple(color = Color.Black)
+                        ) { onNext() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Next  >",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+// ─── Screen: Education Carousel (pages 9–13 collapsed into swipeable pager) ──
+
+private data class SlideData(
+    val bg: Color,
+    val emoji: String,
+    val title: String,
+    val body: String,
+    val gradientBtn: Boolean = false
+)
+
+private val EDUCATION_SLIDES = listOf(
+    SlideData(Color(0xFFD32F2F), "🧠", "Porn is a drug",
+        "Using porn releases a chemical in the brain called dopamine. This chemical makes you feel good — it's why you feel pleasure when you watch porn."),
+    SlideData(Color(0xFFD32F2F), "💔", "Porn destroys relationships",
+        "Porn reduces your hunger for a real relationship and replaces it with the hunger for more porn."),
+    SlideData(Color(0xFFD32F2F), "⚡", "Porn shatters sex drive",
+        "More than 50% of porn addicts have reported a loss of interest in real sex, and an overall decrease in their sex drive."),
+    SlideData(Color(0xFFD32F2F), "😔", "Feeling unhappy?",
+        "An elevated dopamine level means you need more dopamine to feel good. This is why so many heavy porn users report feeling depressed, unmotivated, and anti-social."),
+    SlideData(Color(0xFF0A1628), "🌱", "Path to Recovery",
+        "Recovery is possible. By abstaining from porn, your brain can reset its dopamine sensitivity, leading to healthier relationships and improved well-being.",
+        gradientBtn = true)
+)
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun EducationCarouselScreen(onNext: () -> Unit, onBack: () -> Unit) {
+    val pagerState = rememberPagerState(pageCount = { EDUCATION_SLIDES.size })
+    val scope = rememberCoroutineScope()
+    val currentSlide = EDUCATION_SLIDES[pagerState.currentPage]
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { index ->
+            val slide = EDUCATION_SLIDES[index]
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(slide.bg)
+                    .systemBarsPadding()
+                    .padding(horizontal = 28.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(text = slide.emoji, fontSize = 80.sp, textAlign = TextAlign.Center)
+                    Spacer(modifier = Modifier.height(40.dp))
+                    Text(
+                        text = slide.title,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        lineHeight = 34.sp
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = slide.body,
+                        fontSize = 16.sp,
+                        color = Color.White.copy(alpha = 0.9f),
+                        textAlign = TextAlign.Center,
+                        lineHeight = 24.sp
+                    )
+                }
+            }
+        }
+
+        // Fixed bottom overlay — dots + button floating above the pager
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .background(currentSlide.bg)   // matches settled slide so no flash
+                .navigationBarsPadding()
+                .padding(horizontal = 28.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            PageIndicator(
+                currentPage = pagerState.currentPage,
+                pageCount = EDUCATION_SLIDES.size,
+                modifier = Modifier.padding(bottom = 20.dp)
+            )
+
+            val isLast = pagerState.currentPage == EDUCATION_SLIDES.lastIndex
+
+            if (currentSlide.gradientBtn) {
+                GradientButton(
+                    text = if (isLast) "Next  >" else "Next  >",
+                    onClick = {
+                        if (isLast) onNext()
+                        else scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.White)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = rememberRipple(color = Color.Black)
+                        ) {
+                            if (isLast) onNext()
+                            else scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Next  >",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Black
+                    )
+                }
+            }
+        }
     }
 }
 
