@@ -78,6 +78,10 @@ dependencies {
     // Google Play Billing
     implementation("com.android.billingclient:billing-ktx:7.1.1")
 
+    // Coil for GIF support in Compose
+    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("io.coil-kt:coil-gif:2.5.0")
+
     // Google Fonts for Compose
     implementation("androidx.compose.ui:ui-text-google-fonts:1.5.4")
 

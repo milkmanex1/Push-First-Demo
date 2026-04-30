@@ -1,9 +1,23 @@
 package com.pushfirst.demo
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
+import java.util.concurrent.Executors
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
@@ -29,6 +43,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import android.graphics.BitmapFactory
+import coil.ImageLoader
+import coil.compose.AsyncImage
+import coil.decode.GifDecoder
+import coil.request.ImageRequest
 import androidx.compose.foundation.Image
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -41,6 +59,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.PagerSnapDistance
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.KeyboardOptions
@@ -166,8 +186,8 @@ class OnboardingActivity : ComponentActivity() {
                 ) {
                     OnboardingFlow(
                         startPage = when {
-                            forcePaywall -> 12
-                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 12
+                            forcePaywall -> 18
+                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 18
                             else -> 0
                         },
                         monthlyPrice = monthlyPrice.value,
@@ -232,15 +252,27 @@ private fun OnboardingFlow(
             7 -> FeelingsScreen(viewModel = viewModel, onNext = { page = 8 }, onBack = { page = 6 })
             8 -> SymptomsScreen(viewModel = viewModel, onNext = { page = 9 }, onBack = { page = 7 })
             9 -> EducationCarouselScreen(onNext = { page = 10 }, onBack = { page = 8 })
-            10 -> WillpowerFailsScreen(onNext = { page = 11 }, onBack = { page = 9 })
-            11 -> HowItWorksScreen(onNext = { page = 12 }, onBack = { page = 10 })
-            12 -> PaywallScreen(
+            10 -> ScienceAgreeScreen(onNext = { page = 11 }, onBack = { page = 9 })
+            11 -> RewiringBenefitsScreen(onNext = { page = 13 }, onBack = { page = 10 })
+            13 -> GoalsScreen(viewModel = viewModel, onNext = { page = 14 }, onBack = { page = 11 })
+            14 -> SocialProofScreen(onNext = { page = 15 }, onBack = { page = 13 })
+            15 -> ReferralSourceScreen(viewModel = viewModel, onNext = { page = 16 }, onBack = { page = 14 })
+            16 -> CameraTrialScreen(
+                onNext = { page = 17 },
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 15 }} else null
+            )
+            17 -> YourPlanScreen(
+                viewModel = viewModel,
+                onNext = { page = 18 },
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 16 }} else null
+            )
+            18 -> PaywallScreen(
                 monthlyPrice = monthlyPrice,
                 yearlyTotal = yearlyTotal,
                 yearlyMonthly = yearlyMonthly,
                 onStartTrial = onStartTrial,
                 onRestore = onRestore,
-                onBack = { page = 11 }
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 17 }} else null
             )
         }
     }
@@ -322,41 +354,173 @@ private fun QuizTopBar(currentPage: Int, totalPages: Int, onBack: () -> Unit) {
 
 @Composable
 private fun SplashScreen(onNext: () -> Unit) {
-    StarryBackground {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+    ) {
+        // Layer 1: Base gradient — deep navy top to dark purple-navy bottom
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF020818),
+                            Color(0xFF0A0A2A),
+                            Color(0xFF150A2E),
+                            Color(0xFF1A0A1A)
+                        )
+                    )
+                )
+        )
+
+        // Layer 2: Star particles
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val starPositions = listOf(
+                Offset(0.08f * size.width, 0.05f * size.height),
+                Offset(0.22f * size.width, 0.12f * size.height),
+                Offset(0.67f * size.width, 0.08f * size.height),
+                Offset(0.88f * size.width, 0.04f * size.height),
+                Offset(0.45f * size.width, 0.15f * size.height),
+                Offset(0.78f * size.width, 0.18f * size.height),
+                Offset(0.12f * size.width, 0.22f * size.height),
+                Offset(0.55f * size.width, 0.25f * size.height),
+                Offset(0.92f * size.width, 0.28f * size.height),
+                Offset(0.33f * size.width, 0.32f * size.height),
+                Offset(0.05f * size.width, 0.38f * size.height),
+                Offset(0.72f * size.width, 0.35f * size.height),
+                Offset(0.18f * size.width, 0.42f * size.height),
+                Offset(0.85f * size.width, 0.44f * size.height),
+                Offset(0.40f * size.width, 0.10f * size.height),
+                Offset(0.95f * size.width, 0.15f * size.height),
+                Offset(0.28f * size.width, 0.48f * size.height),
+                Offset(0.62f * size.width, 0.42f * size.height),
+            )
+            starPositions.forEachIndexed { index, pos ->
+                val radius = if (index % 3 == 0) 2.5f else if (index % 3 == 1) 1.8f else 1.2f
+                val alpha = if (index % 4 == 0) 0.9f else if (index % 4 == 1) 0.6f else 0.4f
+                drawCircle(color = Color.White.copy(alpha = alpha), radius = radius, center = pos)
+            }
+        }
+
+        // Layer 3: Large soft glowing orb centered horizontally at 62% down
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFFFF8C00).copy(alpha = 0.15f),
+                        Color(0xFFFF6B00).copy(alpha = 0.08f),
+                        Color.Transparent
+                    ),
+                    center = Offset(size.width * 0.5f, size.height * 0.62f),
+                    radius = size.width * 0.65f
+                ),
+                radius = size.width * 0.65f,
+                center = Offset(size.width * 0.5f, size.height * 0.62f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFFFFCC66).copy(alpha = 0.25f),
+                        Color(0xFFFF8C00).copy(alpha = 0.12f),
+                        Color.Transparent
+                    ),
+                    center = Offset(size.width * 0.5f, size.height * 0.62f),
+                    radius = size.width * 0.38f
+                ),
+                radius = size.width * 0.38f,
+                center = Offset(size.width * 0.5f, size.height * 0.62f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0xFFFFF0CC).copy(alpha = 0.9f),
+                        Color(0xFFFFCC66).copy(alpha = 0.5f),
+                        Color.Transparent
+                    ),
+                    center = Offset(size.width * 0.5f, size.height * 0.62f),
+                    radius = size.width * 0.12f
+                ),
+                radius = size.width * 0.12f,
+                center = Offset(size.width * 0.5f, size.height * 0.62f)
+            )
+        }
+
+        // Layer 4: Horizontal ambient glow at the horizon line
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(180.dp)
+                .align(Alignment.BottomCenter)
+                .offset(y = (-200).dp)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xFFFF6B00).copy(alpha = 0.06f),
+                            Color(0xFFFF8C00).copy(alpha = 0.10f),
+                            Color(0xFFFF6B00).copy(alpha = 0.06f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        // Layer 5: Bottom fade — dark vignette so button area is clean
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xFF010510).copy(alpha = 0.85f),
+                            Color(0xFF010510)
+                        )
+                    )
+                )
+        )
+
+        // Content on top of all background layers
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .systemBarsPadding()
                 .padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Spacer(modifier = Modifier.height(56.dp))
+            Spacer(modifier = Modifier.height(72.dp))
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "💪", fontSize = 56.sp)
+                Text(text = "💪", fontSize = 52.sp)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
                     text = "PushFirst",
-                    fontSize = 38.sp,
+                    fontSize = 42.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White,
-                    letterSpacing = 2.sp
+                    letterSpacing = 3.sp
                 )
             }
 
             Text(
                 text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = Color.White)) { append("Replace every urge\nwith a ") }
-                    withStyle(SpanStyle(color = Color(0xFF00D4FF))) { append("rep.") }
+                    withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
+                        append("Replace every urge\nwith a ")
+                    }
+                    withStyle(SpanStyle(color = Color(0xFF00D4FF), fontWeight = FontWeight.ExtraBold)) {
+                        append("rep.")
+                    }
                 },
-                fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold,
+                fontSize = 30.sp,
                 textAlign = TextAlign.Center,
                 lineHeight = 42.sp
             )
 
-            Column {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 GradientButton(
                     text = "Get Started  →",
                     onClick = onNext,
@@ -636,10 +800,10 @@ private fun ValuePropScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
     }
 }
 
-// ─── Screen 2: How It Works ─────────────────────────────────────────────────
+// ─── (HowItWorksScreen removed — replaced by HowPushFirstWorksScreen) ───────
 
 @Composable
-private fun HowItWorksScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
+private fun _HowItWorksScreen_DELETED(onNext: () -> Unit, onBack: (() -> Unit)?) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -886,6 +1050,7 @@ private fun SingleSelectQuizScreen(
     onBack: () -> Unit,
     autoAdvance: Boolean = false
 ) {
+    val scope = rememberCoroutineScope()
     StarryBackground {
         Column(modifier = Modifier.fillMaxSize()) {
             QuizTopBar(currentPage = currentPage, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
@@ -929,7 +1094,15 @@ private fun SingleSelectQuizScreen(
                                 .clickable(
                                     interactionSource = remember { MutableInteractionSource() },
                                     indication = rememberRipple(color = Color(0xFF00D4FF))
-                                ) { onSelect(option) },
+                                ) {
+                                    onSelect(option)
+                                    if (autoAdvance) {
+                                        scope.launch {
+                                            kotlinx.coroutines.delay(300)
+                                            onNext()
+                                        }
+                                    }
+                                },
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -1003,7 +1176,8 @@ private fun PornFrequencyScreen(
         selected = viewModel.pornFrequency,
         onSelect = { viewModel.pornFrequency = it },
         onNext = onNext,
-        onBack = onBack
+        onBack = onBack,
+        autoAdvance = true
     )
 }
 
@@ -1023,7 +1197,8 @@ private fun AgeFirstExposureScreen(
         selected = viewModel.ageFirstExposure,
         onSelect = { viewModel.ageFirstExposure = it },
         onNext = onNext,
-        onBack = onBack
+        onBack = onBack,
+        autoAdvance = true
     )
 }
 
@@ -1036,7 +1211,6 @@ private fun EscalationScreen(
     onBack: () -> Unit
 ) {
     var localSelection by remember { mutableStateOf(if (viewModel.escalationShift) "Yes" else "") }
-    val scope = rememberCoroutineScope()
 
     SingleSelectQuizScreen(
         currentPage = 5,
@@ -1047,10 +1221,6 @@ private fun EscalationScreen(
         onSelect = { choice ->
             localSelection = choice
             viewModel.escalationShift = (choice == "Yes")
-            scope.launch {
-                kotlinx.coroutines.delay(300)
-                onNext()
-            }
         },
         onNext = onNext,
         onBack = onBack,
@@ -1291,6 +1461,12 @@ private fun TriedToQuitScreen(
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White,
                         lineHeight = 36.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Choose up to 3",
+                        fontSize = 14.sp,
+                        color = Color(0xFF666688)
                     )
                 }
 
@@ -1584,20 +1760,26 @@ private data class SlideData(
     val emoji: String,
     val title: String,
     val body: String,
+    val imageAssetPath: String? = null,
     val gradientBtn: Boolean = false
 )
 
 private val EDUCATION_SLIDES = listOf(
-    SlideData(Color(0xFFD32F2F), "🧠", "Porn is a drug",
-        "Using porn releases a chemical in the brain called dopamine. This chemical makes you feel good — it's why you feel pleasure when you watch porn."),
-    SlideData(Color(0xFFD32F2F), "💔", "Porn destroys relationships",
-        "Porn reduces your hunger for a real relationship and replaces it with the hunger for more porn."),
-    SlideData(Color(0xFFD32F2F), "⚡", "Porn shatters sex drive",
-        "More than 50% of porn addicts have reported a loss of interest in real sex, and an overall decrease in their sex drive."),
-    SlideData(Color(0xFFD32F2F), "😔", "Feeling unhappy?",
-        "An elevated dopamine level means you need more dopamine to feel good. This is why so many heavy porn users report feeling depressed, unmotivated, and anti-social."),
+    SlideData(Color(0xFFC91C21), "🧠", "Porn is a drug",
+        imageAssetPath = "Onboarding/brain2.png",
+        body = "Using porn releases a chemical in the brain called dopamine. This chemical makes you feel good — it's why you feel pleasure when you watch porn."),
+    SlideData(Color(0xFFC91C21), "💔", "Porn destroys relationships",
+        imageAssetPath = "Onboarding/heartbreak2.png",
+        body = "Porn reduces your hunger for a real relationship and replaces it with the hunger for more porn."),
+    SlideData(Color(0xFFC91C21), "⚡", "Porn shatters sex drive",
+        imageAssetPath = "Onboarding/bed1.jpeg",
+        body = "More than 50% of porn addicts have reported a loss of interest in real sex, and an overall decrease in their sex drive."),
+    SlideData(Color(0xFFC91C21), "😔", "Feeling unhappy?",
+        imageAssetPath = "Onboarding/sad.png",
+        body = "An elevated dopamine level means you need more dopamine to feel good. This is why so many heavy porn users report feeling depressed, unmotivated, and anti-social."),
     SlideData(Color(0xFF0A1628), "🌱", "Path to Recovery",
-        "Recovery is possible. By abstaining from porn, your brain can reset its dopamine sensitivity, leading to healthier relationships and improved well-being.",
+        imageAssetPath = "Onboarding/plant1.png",
+        body = "Recovery is possible. By abstaining from porn, your brain can reset its dopamine sensitivity, leading to healthier relationships and improved well-being.",
         gradientBtn = true)
 )
 
@@ -1607,13 +1789,24 @@ private fun EducationCarouselScreen(onNext: () -> Unit, onBack: () -> Unit) {
     val pagerState = rememberPagerState(pageCount = { EDUCATION_SLIDES.size })
     val scope = rememberCoroutineScope()
     val currentSlide = EDUCATION_SLIDES[pagerState.currentPage]
+    val flingBehavior = PagerDefaults.flingBehavior(
+        state = pagerState,
+        pagerSnapDistance = PagerSnapDistance.atMost(EDUCATION_SLIDES.lastIndex)
+    )
 
     Box(modifier = Modifier.fillMaxSize()) {
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            flingBehavior = flingBehavior
         ) { index ->
             val slide = EDUCATION_SLIDES[index]
+            val context = LocalContext.current
+            val heroBitmap = remember(slide.imageAssetPath) {
+                slide.imageAssetPath?.let { path ->
+                    context.assets.open(path).use { BitmapFactory.decodeStream(it) }
+                }
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1626,7 +1819,18 @@ private fun EducationCarouselScreen(onNext: () -> Unit, onBack: () -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(text = slide.emoji, fontSize = 80.sp, textAlign = TextAlign.Center)
+                    if (heroBitmap != null) {
+                        Image(
+                            bitmap = heroBitmap.asImageBitmap(),
+                            contentDescription = slide.title,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp)
+                        )
+                    } else {
+                        Text(text = slide.emoji, fontSize = 120.sp, textAlign = TextAlign.Center)
+                    }
                     Spacer(modifier = Modifier.height(40.dp))
                     Text(
                         text = slide.title,
@@ -1703,76 +1907,773 @@ private fun EducationCarouselScreen(onNext: () -> Unit, onBack: () -> Unit) {
     }
 }
 
-// ─── Screen 5: Willpower fails ───────────────────────────────────────────────
+// ─── Screen: Science Agree (page 10) ─────────────────────────────────────────
 
 @Composable
-private fun WillpowerFailsScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
-    val cyanGlow = Shadow(color = Color(0xFF00D4FF), offset = Offset.Zero, blurRadius = 20f)
+private fun ScienceAgreeScreen(onNext: () -> Unit, onBack: () -> Unit) {
+    StarryBackground {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Text(
+                    text = "←", fontSize = 24.sp, color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() }
+                        .padding(4.dp)
+                )
+            }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .padding(horizontal = 28.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        OnboardingTopBar(currentPage = 3, pageCount = 6, onBack = onBack)
+            Spacer(modifier = Modifier.weight(0.2f))
 
-        Spacer(modifier = Modifier.weight(0.4f))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                Text(text = "🌿", fontSize = 26.sp)
+                Spacer(modifier = Modifier.width(6.dp))
+                Row {
+                    repeat(5) {
+                        Text(text = "★", fontSize = 20.sp, color = Color(0xFF00D4FF))
+                    }
+                }
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(text = "🌿", fontSize = 26.sp)
+            }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(text = "We know that", fontSize = 26.sp, color = Color.White, textAlign = TextAlign.Center)
+                Text(text = "Quitting is hard.", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF6B00), textAlign = TextAlign.Center)
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(text = "Science agrees - the best method is to", fontSize = 20.sp, color = Color.White, textAlign = TextAlign.Center, lineHeight = 28.sp)
+                Text(text = "Replace.", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00D4FF), textAlign = TextAlign.Center)
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(text = "And what better replacement than", fontSize = 20.sp, color = Color.White, textAlign = TextAlign.Center, lineHeight = 28.sp)
+                Text(text = "Exercise?", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00D4FF), textAlign = TextAlign.Center)
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
             Text(
-                text = buildAnnotatedString {
-                    withStyle(SpanStyle(color = Color.White)) {
-                        append("Willpower fails.\n")
-                    }
-                    withStyle(SpanStyle(color = Color(0xFF00D4FF), shadow = cyanGlow)) {
-                        append("Replacement works.")
-                    }
-                },
-                fontSize = 34.sp,
-                fontWeight = FontWeight.ExtraBold,
-                fontFamily = CinzelFont,
-                letterSpacing = 3.sp,
-                textAlign = TextAlign.Center,
-                lineHeight = 42.sp
+                text = "Backed by longitudinal studies, systematic reviews and behavioral science experts.",
+                fontSize = 12.sp, color = Color(0xFF555566), textAlign = TextAlign.Center, lineHeight = 18.sp,
+                modifier = Modifier.padding(bottom = 12.dp)
             )
 
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth().height(56.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF2A2A2A))
+                    .border(1.dp, Color(0xFF444455), RoundedCornerShape(20.dp))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.White)) { onNext() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "Continue", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+// ─── Screen: Rewiring Benefits (page 11) ─────────────────────────────────────
+
+@Composable
+private fun RewiringBenefitsScreen(onNext: () -> Unit, onBack: () -> Unit) {
+    data class Expert(val initials: String, val name: String, val bold: String, val body: String, val blueCheck: Boolean = false)
+    val experts = listOf(
+        Expert("AH", "Andrew Huberman, Ph.D",
+            "Drastically improve your life.",
+            "Resetting your dopamine balance by taking a break from highly stimulating content can dramatically improve motivation, emotional stability, and everyday pleasure."),
+        Expert("SB", "Steven Bartlett",
+            "There's no good in porn.",
+            "Pornography doesn't have an educational role — it's only an open window for a market that brings emptiness and addiction."),
+        Expert("M", "Marcus R. — PushFirst user",
+            "Quitting changed everything.",
+            "I've done over 300 push-ups this week. My focus and energy are unreal compared to before.", blueCheck = true)
+    )
+
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "←", fontSize = 24.sp, color = Color.White,
+                    modifier = Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() }.padding(end = 16.dp))
+                Text(text = "Rewiring Benefits", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                    modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                Spacer(modifier = Modifier.width(40.dp))
+            }
+
+            LazyColumn(
+                modifier = Modifier.weight(1f).padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                experts.forEach { expert ->
+                    item {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                                Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(50)).background(Color(0xFF1A2A4A)), contentAlignment = Alignment.Center) {
+                                    Text(text = expert.initials, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text(text = expert.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White, modifier = Modifier.weight(1f))
+                                Text(text = if (expert.blueCheck) "🔵" else "✅", fontSize = 15.sp)
+                            }
+                            Column(
+                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Color(0xFF0D1B3E)).padding(horizontal = 16.dp, vertical = 14.dp)
+                            ) {
+                                Text(text = expert.bold, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color.White, lineHeight = 22.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(text = expert.body, fontSize = 13.sp, color = Color(0xFFAABBCC), lineHeight = 20.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp).navigationBarsPadding()
+                    .height(56.dp).clip(RoundedCornerShape(20.dp)).background(Color.White)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.Black)) { onNext() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "Continue", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+            }
+        }
+    }
+}
+
+// ─── Screen: Goals (page 13) ─────────────────────────────────────────────────
+
+private data class GoalOption(val emoji: String, val label: String, val color: Color)
+private val GOAL_OPTIONS = listOf(
+    GoalOption("❤️", "Stronger relationships", Color(0xFFE53935)),
+    GoalOption("👤", "Improved self-confidence", Color(0xFF1E88E5)),
+    GoalOption("😊", "Improved mood and happiness", Color(0xFFFDD835)),
+    GoalOption("⚡", "More energy and motivation", Color(0xFFFF6B00)),
+    GoalOption("💪", "Get fit & build muscle", Color(0xFF00D4FF)),
+    GoalOption("🧠", "Improve mental clarity", Color(0xFF7B1FA2)),
+    GoalOption("🚫", "Quit porn for good", Color(0xFFE53935)),
+    GoalOption("😴", "Sleep better", Color(0xFF283593))
+)
+
+@Composable
+private fun GoalsScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBack: () -> Unit) {
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            QuizTopBar(currentPage = 13, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
+
+            Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) {
+                Text(text = "Choose your goals", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "Select the goals you wish to achieve during your reboot.", fontSize = 14.sp, color = Color(0xFF888888), lineHeight = 20.sp)
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            LazyColumn(
+                modifier = Modifier.weight(1f).padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                GOAL_OPTIONS.forEach { goal ->
+                    item {
+                        val isSelected = goal.label in viewModel.goals
+                        val atMax = viewModel.goals.size >= 3 && !isSelected
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clip(RoundedCornerShape(50))
+                                .background(if (isSelected) goal.color.copy(alpha = 0.15f) else Color(0xFF111122))
+                                .border(if (isSelected) 2.dp else 1.dp, if (isSelected) goal.color else Color(0xFF2A2A44), RoundedCornerShape(50))
+                                .clickable(enabled = !atMax, interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = goal.color)) {
+                                    viewModel.goals = if (isSelected) viewModel.goals - goal.label else viewModel.goals + goal.label
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(50)).background(goal.color.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+                                Text(text = goal.emoji, fontSize = 18.sp)
+                            }
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Text(text = goal.label, fontSize = 15.sp, color = if (atMax) Color(0xFF444466) else Color.White, modifier = Modifier.weight(1f), lineHeight = 21.sp)
+                            Box(
+                                modifier = Modifier.size(24.dp).clip(RoundedCornerShape(50))
+                                    .background(if (isSelected) goal.color else Color.Transparent)
+                                    .border(2.dp, if (isSelected) goal.color else Color(0xFF555577), RoundedCornerShape(50)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) Box(modifier = Modifier.size(10.dp).clip(RoundedCornerShape(50)).background(Color.White))
+                            }
+                        }
+                    }
+                }
+            }
+
+            val enabled = viewModel.goals.isNotEmpty()
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp).navigationBarsPadding()
+                    .height(56.dp).clip(RoundedCornerShape(16.dp))
+                    .background(if (enabled) Color.White else Color(0xFF2A2A3A))
+                    .clickable(enabled = enabled, interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.Black)) { if (enabled) onNext() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "Track these goals", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = if (enabled) Color(0xFF111111) else Color(0xFF555566))
+            }
+        }
+    }
+}
+
+// ─── Screen: Social Proof (page 14) ──────────────────────────────────────────
+
+@Composable
+private fun SocialProofScreen(onNext: () -> Unit, onBack: () -> Unit) {
+    data class Review(val initial: String, val bgColor: Color, val name: String, val handle: String, val body: String)
+    val reviews = listOf(
+        Review("D", Color(0xFF00ACC1), "Daniel K.", "@danielk_fit", "\"I've done 200 push-ups this week alone. This app genuinely changed how I deal with urges.\""),
+        Review("M", Color(0xFFFF6B00), "Marcus T.", "@marcus_reboot", "\"Was skeptical but it actually works. The push-up detection is surprisingly accurate.\"")
+    )
+
+    StarryBackground {
+        Column(
+            modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
             Spacer(modifier = Modifier.height(24.dp))
 
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                Text(text = "🌿", fontSize = 26.sp)
+                Spacer(modifier = Modifier.width(4.dp))
+                Row { repeat(5) { Text(text = "★", fontSize = 20.sp, color = Color(0xFFFFD700)) } }
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = "🌿", fontSize = 26.sp)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Text(
                 text = buildAnnotatedString {
-                    append("Science shows the most effective way to break an addiction is to ")
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) {
-                        append("replace it with a physical habit")
-                    }
-                    append(". Every push-up rewires your brain.")
+                    withStyle(SpanStyle(color = Color.White)) { append("PushFirst was made for\n") }
+                    withStyle(SpanStyle(color = Color(0xFF00D4FF), fontWeight = FontWeight.ExtraBold)) { append("people like you.") }
                 },
-                fontSize = 16.sp,
-                color = Color(0xFFAAAAAA),
-                textAlign = TextAlign.Center,
-                lineHeight = 24.sp
+                fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center, lineHeight = 34.sp
             )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Overlapping avatars
+            Box(modifier = Modifier.height(48.dp).width(120.dp)) {
+                listOf("D" to Color(0xFF00ACC1), "J" to Color(0xFF5C6BC0), "K" to Color(0xFFFF6B00))
+                    .forEachIndexed { i, (initial, color) ->
+                        Box(
+                            modifier = Modifier.offset(x = (i * 36).dp).size(48.dp)
+                                .clip(RoundedCornerShape(50)).background(color)
+                                .border(2.dp, Color(0xFF060A14), RoundedCornerShape(50)),
+                            contentAlignment = Alignment.Center
+                        ) { Text(text = initial, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+                    }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(text = "Join thousands on their journey", fontSize = 14.sp, color = Color(0xFF888888))
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                reviews.forEach { r ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF0D1B3E)).border(1.dp, Color(0xFF1E3060), RoundedCornerShape(12.dp))
+                            .padding(16.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(36.dp).clip(RoundedCornerShape(50)).background(r.bgColor), contentAlignment = Alignment.Center) {
+                                Text(text = r.initial, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = r.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text(text = r.handle, fontSize = 12.sp, color = Color(0xFF666688))
+                            }
+                            Row { repeat(5) { Text(text = "★", fontSize = 12.sp, color = Color(0xFFFFD700)) } }
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(text = r.body, fontSize = 14.sp, color = Color(0xFFBBBBCC), lineHeight = 21.sp)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+            GradientButton(text = "Continue", onClick = onNext, modifier = Modifier.fillMaxWidth())
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+// ─── Screen: Referral Source (page 15) ───────────────────────────────────────
+
+@Composable
+private fun ReferralSourceScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBack: () -> Unit) {
+    val options = listOf("📱" to "TikTok", "📸" to "Instagram", "▶️" to "YouTube", "🔍" to "Google", "👥" to "Friend or family", "📰" to "Other")
+    val scope = rememberCoroutineScope()
+    var localSelection by remember { mutableStateOf("") }
+
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            QuizTopBar(currentPage = 15, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
+            Column(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(28.dp))
+                    Text(text = "One last thing,", fontSize = 14.sp, color = Color(0xFF888888))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(text = "Where did you hear about us?", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, lineHeight = 34.sp)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    options.forEach { (emoji, label) ->
+                        val isSelected = localSelection == label
+                        Row(
+                            modifier = Modifier.fillMaxWidth().height(54.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(if (isSelected) Color(0xFF00D4FF) else Color(0xFF111122))
+                                .border(if (isSelected) 2.dp else 1.dp, if (isSelected) Color(0xFF00D4FF) else Color(0xFF2A2A44), RoundedCornerShape(50))
+                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color(0xFF00D4FF))) {
+                                    localSelection = label
+                                    viewModel.referralSource = label
+                                    scope.launch { kotlinx.coroutines.delay(300); onNext() }
+                                }
+                                .padding(horizontal = 20.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = emoji, fontSize = 18.sp)
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Text(text = label, fontSize = 15.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color(0xFF001A33) else Color.White)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(48.dp))
+            }
+        }
+    }
+}
+
+// ─── Screen: Camera Trial (page 16) ──────────────────────────────────────────
+
+private enum class CameraTrialState { SELECT, SETUP, INSTRUCTION, ACTIVE }
+
+@Composable
+private fun CameraTrialScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
+    var state by remember { mutableStateOf(CameraTrialState.SELECT) }
+
+    when (state) {
+        CameraTrialState.SELECT -> CameraTrialSelectState(
+            onPushUps = { state = CameraTrialState.SETUP },
+            onSkip = onNext,
+            onBack = onBack
+        )
+        CameraTrialState.SETUP -> CameraTrialSetupState(
+            onContinue = { state = CameraTrialState.INSTRUCTION },
+            onBack = { state = CameraTrialState.SELECT }
+        )
+        CameraTrialState.INSTRUCTION -> CameraTrialInstructionState(
+            onContinue = { state = CameraTrialState.ACTIVE },
+            onBack = { state = CameraTrialState.SETUP }
+        )
+        CameraTrialState.ACTIVE -> CameraTrialActiveState(
+            onDone = onNext,
+            onSkip = onNext
+        )
+    }
+}
+
+@Composable
+private fun CameraTrialSelectState(onPushUps: () -> Unit, onSkip: () -> Unit, onBack: (() -> Unit)?) {
+    StarryBackground {
+        Column(
+            modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 28.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                if (onBack != null) {
+                    Text(text = "←", fontSize = 24.sp, color = Color.White,
+                        modifier = Modifier.align(Alignment.CenterStart)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() }.padding(4.dp))
+                }
+            }
+
+            Column {
+                Text(text = "Try out the AI push-up detector!", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, lineHeight = 32.sp)
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(text = "You can also skip this", fontSize = 14.sp, color = Color(0xFF888888))
+                Spacer(modifier = Modifier.height(20.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "⏳", fontSize = 16.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "See your first reps counted!", fontSize = 15.sp, color = Color(0xFF00D4FF), fontWeight = FontWeight.SemiBold)
+                }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                // Push-ups — fully active
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(72.dp)
+                        .clip(RoundedCornerShape(16.dp)).background(Color(0xFF0D1B3E))
+                        .border(1.dp, Color(0xFF1E3060), RoundedCornerShape(16.dp))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color(0xFF00D4FF))) { onPushUps() }
+                        .padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "💪", fontSize = 28.sp)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(text = "Push-ups", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.weight(1f))
+                    Text(text = "›", fontSize = 22.sp, color = Color(0xFF00D4FF))
+                }
+
+                // Squats — greyed out, not clickable
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(72.dp)
+                        .clip(RoundedCornerShape(16.dp)).background(Color(0xFF0A0F1E))
+                        .border(1.dp, Color(0xFF1A1A2A), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "🦵", fontSize = 28.sp, color = Color(0xFF444455))
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(text = "Squats", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF444455), modifier = Modifier.weight(1f))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color(0xFF1A1A2A))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(text = "Coming soon", fontSize = 10.sp, color = Color(0xFF555566))
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(text = "›", fontSize = 22.sp, color = Color(0xFF333344))
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "🔒  Your camera feed never leaves your device.", fontSize = 12.sp, color = Color(0xFF555566), textAlign = TextAlign.Center)
+                Spacer(modifier = Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier.fillMaxWidth().height(52.dp)
+                        .clip(RoundedCornerShape(50)).border(1.dp, Color(0xFF444455), RoundedCornerShape(50))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.White)) { onSkip() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "Try later", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                }
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraTrialInstructionState(onContinue: () -> Unit, onBack: () -> Unit) {
+    val context = LocalContext.current
+    var hasCameraPermission by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasCameraPermission = granted
+    }
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (hasCameraPermission) {
+            AndroidView(
+                factory = { ctx -> PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A14)))
         }
 
-        Spacer(modifier = Modifier.weight(1f))
+        Column(modifier = Modifier.fillMaxSize()) {
+            Text(text = "←", fontSize = 24.sp, color = Color.White,
+                modifier = Modifier.statusBarsPadding().padding(20.dp)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() })
 
-        Text(
-            text = "Backed by behavioral science research.",
-            fontSize = 12.sp,
-            color = Color(0xFF555555),
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 16.dp)
+            Box(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data("file:///android_asset/Onboarding/PushupsFront.gif")
+                        .crossfade(false)
+                        .build(),
+                    imageLoader = remember {
+                        ImageLoader.Builder(context).components { add(GifDecoder.Factory()) }.build()
+                    },
+                    contentDescription = "Push-up demonstration",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .background(Color(0xFF060A20).copy(alpha = 0.95f)).navigationBarsPadding()
+                    .padding(horizontal = 28.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = "Push-ups", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "Put your entire body in frame and exercise like in the video!",
+                    fontSize = 15.sp, color = Color(0xFFBBBBCC), textAlign = TextAlign.Center, lineHeight = 22.sp
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                GradientButton(text = "Continue", onClick = onContinue, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraTrialSetupState(onContinue: () -> Unit, onBack: () -> Unit) {
+    val context = LocalContext.current
+    var hasCameraPermission by remember {
+        mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasCameraPermission = granted
+    }
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (hasCameraPermission) {
+            AndroidView(
+                factory = { ctx -> PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER } },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0A0A14)))
+        }
+
+        Column(modifier = Modifier.fillMaxSize()) {
+            Text(text = "←", fontSize = 24.sp, color = Color.White,
+                modifier = Modifier.statusBarsPadding().padding(20.dp)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() })
+
+            Box(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data("file:///android_asset/Onboarding/placePhone.gif")
+                        .crossfade(false)
+                        .build(),
+                    imageLoader = remember {
+                        ImageLoader.Builder(context).components { add(GifDecoder.Factory()) }.build()
+                    },
+                    contentDescription = "Phone placement guide",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .background(Color(0xFF060A20).copy(alpha = 0.95f)).navigationBarsPadding()
+                    .padding(horizontal = 28.dp, vertical = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(text = "Setup", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(text = "Place your phone on the floor facing you in a well-lit area.", fontSize = 15.sp, color = Color(0xFFBBBBCC), textAlign = TextAlign.Center, lineHeight = 22.sp)
+                Spacer(modifier = Modifier.height(20.dp))
+                GradientButton(text = "Continue", onClick = onContinue, modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraTrialActiveState(onDone: () -> Unit, onSkip: () -> Unit) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+
+    var repCount by remember { mutableIntStateOf(0) }
+    var landmarks by remember { mutableStateOf<List<NormalizedLandmark>?>(null) }
+    var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
+    var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
+
+    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    val poseAnalyzer = remember {
+        PoseAnalyzer(context = context, onRepCountChanged = { repCount = it }, onStateChanged = {}, onValidPoseChanged = {})
+    }
+
+    LaunchedEffect(Unit) { poseAnalyzer.initialize() }
+
+    LaunchedEffect(Unit) {
+        while (true) { kotlinx.coroutines.delay(33); landmarks = poseAnalyzer.getCurrentLandmarks() }
+    }
+
+    LaunchedEffect(previewViewRef) {
+        val pv = previewViewRef ?: return@LaunchedEffect
+        while (!poseAnalyzer.isPoseLandmarkerInitialized()) { kotlinx.coroutines.delay(100) }
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener({
+            val provider = future.get()
+            cameraProviderRef = provider
+            val preview = Preview.Builder().build().also { it.setSurfaceProvider(pv.surfaceProvider) }
+            val analysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+                .build().also { it.setAnalyzer(cameraExecutor) { img -> poseAnalyzer.analyzeFrame(img) } }
+            provider.unbindAll()
+            provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_FRONT_CAMERA, preview, analysis)
+        }, ContextCompat.getMainExecutor(context))
+    }
+
+    LaunchedEffect(repCount) {
+        if (repCount >= 3) { kotlinx.coroutines.delay(800); onDone() }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { cameraProviderRef?.unbindAll(); poseAnalyzer.close(); cameraExecutor.shutdown() }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AndroidView(
+            factory = { ctx -> PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER; previewViewRef = this } },
+            modifier = Modifier.fillMaxSize()
         )
 
-        GradientButton(
-            text = "Next",
-            onClick = onNext,
-            modifier = Modifier.fillMaxWidth()
-        )
+        PoseOverlay(landmarks = landmarks, modifier = Modifier.fillMaxSize())
 
-        Spacer(modifier = Modifier.height(32.dp))
+        // Rep counter badge
+        Box(
+            modifier = Modifier.align(Alignment.Center).size(100.dp)
+                .clip(RoundedCornerShape(50)).background(Color(0xFF00D4FF).copy(alpha = 0.85f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "$repCount", fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                Text(text = "/ 3", fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f))
+            }
+        }
+
+        // Top hint card
+        Box(
+            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp, start = 20.dp, end = 20.dp)
+                .clip(RoundedCornerShape(12.dp)).background(Color(0xFF0A0A14).copy(alpha = 0.85f))
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "📷", fontSize = 16.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "Keep your whole body in frame.", fontSize = 13.sp, color = Color.White)
+            }
+        }
+
+        // Try later button
+        Box(
+            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .padding(horizontal = 28.dp, vertical = 20.dp).navigationBarsPadding()
+                .height(52.dp).clip(RoundedCornerShape(50)).border(1.dp, Color(0xFF444455), RoundedCornerShape(50))
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.White)) { onSkip() },
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text = "Try later", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+        }
+    }
+}
+
+// ─── Screen: Your Plan (page 17) ─────────────────────────────────────────────
+
+@Composable
+private fun YourPlanScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBack: (() -> Unit)?) {
+    val days = listOf(
+        "📱" to ("Day 0: First Rep" to "Do a short set. Earn your first unlock."),
+        "⏸️" to ("Day 1: Pause Added" to "Reps create a pause before urges win."),
+        "🔥" to ("Day 2: Urges Ease" to "Movement redirects cravings in seconds."),
+        "🧠" to ("Day 3: Clearer Focus" to "Brain fog starts lifting."),
+        "🌙" to ("Day 4: Calmer Evenings" to "Less late-night urges, better sleep."),
+        "📉" to ("Day 5: Urges Drop" to "Cravings shrink as reps add up."),
+        "✨" to ("Day 7: Mindset Shift" to "Hard-first becomes your default.")
+    )
+
+    StarryBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 20.dp, vertical = 14.dp)) {
+                if (onBack != null) {
+                    Text(text = "←", fontSize = 24.sp, color = Color.White,
+                        modifier = Modifier.align(Alignment.CenterStart)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() }.padding(4.dp))
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.weight(1f).padding(horizontal = 20.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                item {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                        Text(text = "Your Plan is Ready", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, textAlign = TextAlign.Center)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        val name = viewModel.userName.ifBlank { "you" }
+                        Text(text = "Based on your profile, here's your 7-day program, $name", fontSize = 14.sp, color = Color(0xFF888888), textAlign = TextAlign.Center, lineHeight = 20.sp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Column(
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF0D1B3E)).border(1.dp, Color(0xFF1E3060), RoundedCornerShape(12.dp))
+                            .padding(18.dp)
+                    ) {
+                        days.forEachIndexed { i, (icon, titleDesc) ->
+                            val (title, desc) = titleDesc
+                            Row(verticalAlignment = Alignment.Top) {
+                                Text(text = icon, fontSize = 22.sp, modifier = Modifier.padding(top = 2.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(text = title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                    Text(text = desc, fontSize = 12.sp, color = Color(0xFF8899AA), lineHeight = 18.sp)
+                                }
+                            }
+                            if (i < days.lastIndex) {
+                                Row {
+                                    Spacer(modifier = Modifier.width(15.dp))
+                                    Box(modifier = Modifier.width(2.dp).height(16.dp).background(Color(0xFF1E3A5F)))
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(text = "Subscribe to unlock your full program and start today.", fontSize = 13.sp, color = Color(0xFF888888), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
+
+            GradientButton(text = "Start My Program  →", onClick = onNext, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp))
+            Spacer(modifier = Modifier.navigationBarsPadding().height(20.dp))
+        }
     }
 }
 
