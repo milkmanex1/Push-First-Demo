@@ -71,9 +71,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -359,112 +362,14 @@ private fun SplashScreen(onNext: () -> Unit) {
             .fillMaxSize()
             .systemBarsPadding()
     ) {
-        // Layer 1: Base gradient — deep navy top to dark purple-navy bottom
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF020818),
-                            Color(0xFF0A0A2A),
-                            Color(0xFF150A2E),
-                            Color(0xFF1A0A1A)
-                        )
-                    )
-                )
-        )
-
-        // Layer 2: Star particles
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val starPositions = listOf(
-                Offset(0.08f * size.width, 0.05f * size.height),
-                Offset(0.22f * size.width, 0.12f * size.height),
-                Offset(0.67f * size.width, 0.08f * size.height),
-                Offset(0.88f * size.width, 0.04f * size.height),
-                Offset(0.45f * size.width, 0.15f * size.height),
-                Offset(0.78f * size.width, 0.18f * size.height),
-                Offset(0.12f * size.width, 0.22f * size.height),
-                Offset(0.55f * size.width, 0.25f * size.height),
-                Offset(0.92f * size.width, 0.28f * size.height),
-                Offset(0.33f * size.width, 0.32f * size.height),
-                Offset(0.05f * size.width, 0.38f * size.height),
-                Offset(0.72f * size.width, 0.35f * size.height),
-                Offset(0.18f * size.width, 0.42f * size.height),
-                Offset(0.85f * size.width, 0.44f * size.height),
-                Offset(0.40f * size.width, 0.10f * size.height),
-                Offset(0.95f * size.width, 0.15f * size.height),
-                Offset(0.28f * size.width, 0.48f * size.height),
-                Offset(0.62f * size.width, 0.42f * size.height),
-            )
-            starPositions.forEachIndexed { index, pos ->
-                val radius = if (index % 3 == 0) 2.5f else if (index % 3 == 1) 1.8f else 1.2f
-                val alpha = if (index % 4 == 0) 0.9f else if (index % 4 == 1) 0.6f else 0.4f
-                drawCircle(color = Color.White.copy(alpha = alpha), radius = radius, center = pos)
-            }
-        }
-
-        // Layer 3: Large soft glowing orb centered horizontally at 62% down
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFFFF8C00).copy(alpha = 0.15f),
-                        Color(0xFFFF6B00).copy(alpha = 0.08f),
-                        Color.Transparent
-                    ),
-                    center = Offset(size.width * 0.5f, size.height * 0.62f),
-                    radius = size.width * 0.65f
-                ),
-                radius = size.width * 0.65f,
-                center = Offset(size.width * 0.5f, size.height * 0.62f)
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFFFFCC66).copy(alpha = 0.25f),
-                        Color(0xFFFF8C00).copy(alpha = 0.12f),
-                        Color.Transparent
-                    ),
-                    center = Offset(size.width * 0.5f, size.height * 0.62f),
-                    radius = size.width * 0.38f
-                ),
-                radius = size.width * 0.38f,
-                center = Offset(size.width * 0.5f, size.height * 0.62f)
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFFFFF0CC).copy(alpha = 0.9f),
-                        Color(0xFFFFCC66).copy(alpha = 0.5f),
-                        Color.Transparent
-                    ),
-                    center = Offset(size.width * 0.5f, size.height * 0.62f),
-                    radius = size.width * 0.12f
-                ),
-                radius = size.width * 0.12f,
-                center = Offset(size.width * 0.5f, size.height * 0.62f)
-            )
-        }
-
-        // Layer 4: Horizontal ambient glow at the horizon line
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(180.dp)
-                .align(Alignment.BottomCenter)
-                .offset(y = (-200).dp)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color(0xFFFF6B00).copy(alpha = 0.06f),
-                            Color(0xFFFF8C00).copy(alpha = 0.10f),
-                            Color(0xFFFF6B00).copy(alpha = 0.06f),
-                            Color.Transparent
-                        )
-                    )
-                )
+        // Layer 1: Full-screen background image
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data("file:///android_asset/Onboarding/splash1.jpeg")
+                .build(),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
         )
 
         // Layer 5: Bottom fade — dark vignette so button area is clean
@@ -492,29 +397,54 @@ private fun SplashScreen(onNext: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Spacer(modifier = Modifier.height(72.dp))
+            Spacer(modifier = Modifier.height(0.dp))
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "💪", fontSize = 52.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "PushFirst",
-                    fontSize = 42.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    letterSpacing = 3.sp
-                )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.offset(y = (-72).dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "PushFirst",
+                        fontSize = 55.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily(Font(R.font.bebas_neue)),
+                        color = Color.White,
+                        letterSpacing = 3.sp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data("file:///android_asset/Icon/icon_white.png")
+                            .build(),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(22.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                }
             }
 
             Text(
                 text = buildAnnotatedString {
                     withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
-                        append("Replace every urge\nwith a ")
+                        append("Replace every ")
                     }
-                    withStyle(SpanStyle(color = Color(0xFF00D4FF), fontWeight = FontWeight.ExtraBold)) {
+                    withStyle(SpanStyle(color = Color(0xFFE86CFF), fontWeight = FontWeight.ExtraBold)) {
+                        append("urge")
+                    }
+                    withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
+                        append("\nwith a ")
+                    }
+                    withStyle(SpanStyle(color = Color(0xFF42F5FF), fontWeight = FontWeight.ExtraBold)) {
                         append("rep.")
                     }
                 },
+                modifier = Modifier.offset(y = 36.dp),
                 fontSize = 30.sp,
                 textAlign = TextAlign.Center,
                 lineHeight = 42.sp
@@ -584,7 +514,7 @@ private fun NameInputScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Column {
+                Column(modifier = Modifier.navigationBarsPadding()) {
                     val enabled = viewModel.userName.isNotBlank()
                     Box(
                         modifier = Modifier
@@ -611,7 +541,7 @@ private fun NameInputScreen(
                             color = if (enabled) Color.White else Color(0xFF555555)
                         )
                     }
-                    Spacer(modifier = Modifier.height(48.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
@@ -688,7 +618,7 @@ private fun GenderScreen(
                     }
                 }
 
-                Column {
+                Column(modifier = Modifier.navigationBarsPadding()) {
                     val enabled = viewModel.gender.isNotBlank()
                     Box(
                         modifier = Modifier
@@ -715,7 +645,7 @@ private fun GenderScreen(
                             color = if (enabled) Color.White else Color(0xFF555555)
                         )
                     }
-                    Spacer(modifier = Modifier.height(48.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
@@ -1510,7 +1440,7 @@ private fun TriedToQuitScreen(
                     }
                 }
 
-                Column {
+                Column(modifier = Modifier.navigationBarsPadding()) {
                     val enabled = viewModel.triedToQuit.isNotEmpty()
                     Box(
                         modifier = Modifier
@@ -1537,7 +1467,7 @@ private fun TriedToQuitScreen(
                             color = if (enabled) Color.White else Color(0xFF555555)
                         )
                     }
-                    Spacer(modifier = Modifier.height(48.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
@@ -1629,7 +1559,7 @@ private fun FeelingsScreen(
                     }
                 }
 
-                Column {
+                Column(modifier = Modifier.navigationBarsPadding()) {
                     val enabled = viewModel.feelingsAfter.isNotEmpty()
                     Box(
                         modifier = Modifier
@@ -1656,7 +1586,7 @@ private fun FeelingsScreen(
                             color = if (enabled) Color.White else Color(0xFF555555)
                         )
                     }
-                    Spacer(modifier = Modifier.height(48.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
         }
@@ -1963,10 +1893,63 @@ private fun ScienceAgreeScreen(onNext: () -> Unit, onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.weight(1f))
 
-            Text(
-                text = "Backed by longitudinal studies, systematic reviews and behavioral science experts.",
-                fontSize = 12.sp, color = Color(0xFF555566), textAlign = TextAlign.Center, lineHeight = 18.sp,
-                modifier = Modifier.padding(bottom = 12.dp)
+            val context = LocalContext.current
+
+            val citationText = buildAnnotatedString {
+                withStyle(SpanStyle(color = Color(0xFF888888), fontSize = 14.sp)) {
+                    append("Backed by ")
+                }
+                pushStringAnnotation(tag = "URL", annotation = "https://pmc.ncbi.nlm.nih.gov/articles/PMC12304691/#:~:text=These%20findings%20suggest,addictive%20behaviors")
+                withStyle(SpanStyle(
+                    color = Color(0xFF00D4FF),
+                    fontSize = 14.sp,
+                    textDecoration = TextDecoration.Underline
+                )) {
+                    append("longitudinal studies")
+                }
+                pop()
+                withStyle(SpanStyle(color = Color(0xFF888888), fontSize = 14.sp)) {
+                    append(", ")
+                }
+                pushStringAnnotation(tag = "URL", annotation = "https://www.mdpi.com/2076-3425/15/8/794")
+                withStyle(SpanStyle(
+                    color = Color(0xFF00D4FF),
+                    fontSize = 14.sp,
+                    textDecoration = TextDecoration.Underline
+                )) {
+                    append("systematic reviews")
+                }
+                pop()
+                withStyle(SpanStyle(color = Color(0xFF888888), fontSize = 14.sp)) {
+                    append(" and ")
+                }
+                pushStringAnnotation(tag = "URL", annotation = "https://newsroom.ucla.edu/releases/kicking-an-addiction-replace-with-joy-ucla-expert-new-book#:~:text=%E2%80%9CPeople%20with%20the%20most%20success,%E2%80%9D")
+                withStyle(SpanStyle(
+                    color = Color(0xFF00D4FF),
+                    fontSize = 14.sp,
+                    textDecoration = TextDecoration.Underline
+                )) {
+                    append("behavioral science experts")
+                }
+                pop()
+                withStyle(SpanStyle(color = Color(0xFF888888), fontSize = 14.sp)) {
+                    append(".")
+                }
+            }
+
+            ClickableText(
+                text = citationText,
+                style = androidx.compose.ui.text.TextStyle(textAlign = TextAlign.Center),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                onClick = { offset ->
+                    citationText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                        .firstOrNull()?.let { annotation ->
+                            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(annotation.item))
+                            context.startActivity(intent)
+                        }
+                }
             )
 
             Box(
@@ -1989,17 +1972,47 @@ private fun ScienceAgreeScreen(onNext: () -> Unit, onBack: () -> Unit) {
 
 @Composable
 private fun RewiringBenefitsScreen(onNext: () -> Unit, onBack: () -> Unit) {
-    data class Expert(val initials: String, val name: String, val bold: String, val body: String, val blueCheck: Boolean = false)
+    data class Expert(
+        val initials: String,
+        val name: String,
+        val bold: String,
+        val body: String,
+        val blueCheck: Boolean = false,
+        val imageAssetPath: String? = null
+    )
     val experts = listOf(
         Expert("AH", "Andrew Huberman, Ph.D",
             "Drastically improve your life.",
-            "Resetting your dopamine balance by taking a break from highly stimulating content can dramatically improve motivation, emotional stability, and everyday pleasure."),
+            "Resetting your dopamine balance by taking a break from highly stimulating content can dramatically improve motivation, emotional stability, and everyday pleasure.",
+            imageAssetPath = "Onboarding/huberman.jpg"),
         Expert("SB", "Steven Bartlett",
             "There's no good in porn.",
-            "Pornography doesn't have an educational role — it's only an open window for a market that brings emptiness and addiction."),
-        Expert("M", "Marcus R. — PushFirst user",
-            "Quitting changed everything.",
-            "I've done over 300 push-ups this week. My focus and energy are unreal compared to before.", blueCheck = true)
+            "Pornography doesn't have an educational role — it's only an open window for a market that brings emptiness and addiction.",
+            imageAssetPath = "Onboarding/Steven-Bartlett.jpg"),
+        Expert("T", "Tyler — PushFirst user",
+            "I feel like a different person!",
+            "3 weeks in. I'm talking more, sleeping better, actually present with people. Didn't expect it to hit this fast..", blueCheck = true,
+            imageAssetPath = "Icon/temp.png"),
+        Expert("A", "Aiden — PushFirst user",
+            "My friends noticed before I said anything.",
+            "Didn't tell anyone what I was doing. Two weeks later my mate asked what changed. He told me I was way more talkative, witty, and sociable.", blueCheck = true,
+            imageAssetPath = "Icon/temp.png"),
+        Expert("N", "Noah — PushFirst user",
+            "500 push-ups a week and I didn't plan any of it.",
+            "Started as punishment basically. Now people at the gym are asking what I'm on. Not gonna lie, it feels great.", blueCheck = true,
+            imageAssetPath = "Icon/temp.png"),
+        Expert("L", "Liam — PushFirst user",
+            "Gone up a shirt size. Walk differently now.",
+            "3 months in. The muscle is real. The confidence is real. Didn't expect both to come from the same thing.", blueCheck = true,
+            imageAssetPath = "Icon/temp.png"),
+        Expert("E", "Ethan — PushFirst user",
+            "Turns out I wasn't lazy. I was just drained.",
+            "Woke up before my alarm wanting to do stuff. Hadn't happened in years. Week two.", blueCheck = true,
+            imageAssetPath = "Icon/temp.png"),
+        Expert("K", "Anonymous — PushFirst user",
+            "Life feels colorful again.",
+            "Rediscovering things I abandoned years ago. Didn't realize how much was being taken until it stopped.", blueCheck = true,
+            imageAssetPath = "Icon/temp.png")
     )
 
     StarryBackground {
@@ -2024,8 +2037,21 @@ private fun RewiringBenefitsScreen(onNext: () -> Unit, onBack: () -> Unit) {
                     item {
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
-                                Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(50)).background(Color(0xFF1A2A4A)), contentAlignment = Alignment.Center) {
-                                    Text(text = expert.initials, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                if (expert.imageAssetPath != null) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data("file:///android_asset/${expert.imageAssetPath}")
+                                            .build(),
+                                        contentDescription = expert.name,
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(50)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(50)).background(Color(0xFF1A2A4A)), contentAlignment = Alignment.Center) {
+                                        Text(text = expert.initials, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    }
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(text = expert.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White, modifier = Modifier.weight(1f))
@@ -2138,17 +2164,30 @@ private fun GoalsScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBa
 
 @Composable
 private fun SocialProofScreen(onNext: () -> Unit, onBack: () -> Unit) {
-    data class Review(val initial: String, val bgColor: Color, val name: String, val handle: String, val body: String)
+    data class Review(
+        val initial: String,
+        val bgColor: Color,
+        val name: String,
+        val handle: String,
+        val body: String,
+        val imageAssetPath: String
+    )
     val reviews = listOf(
-        Review("D", Color(0xFF00ACC1), "Daniel K.", "@danielk_fit", "\"I've done 200 push-ups this week alone. This app genuinely changed how I deal with urges.\""),
-        Review("M", Color(0xFFFF6B00), "Marcus T.", "@marcus_reboot", "\"Was skeptical but it actually works. The push-up detection is surprisingly accurate.\"")
+        Review("D", Color(0xFF00ACC1), "Daniel K.", "@danielk_gains",
+            "\"Tried to cheat the push-up counter on day one. Couldn't. Ended up just doing them. That was 6 weeks ago.\"",
+            imageAssetPath = "Onboarding/socialproof1.jpg"),
+        Review("R", Color(0xFF5C6BC0), "Ryan S.", "@ryanfit_reboot",
+            "\"The detection is accurate. Like uncomfortably accurate. No half reps, no cheating. Honestly that's what makes it work.\"",
+            imageAssetPath = "Onboarding/socialproof2.jpeg"),
+        Review("J", Color(0xFFFF6B00), "Jake M.", "@jakemreboot",
+            "\"It's not just a blocker. Having to earn access back physically changed how I think about it. Nothing else did that.\"",
+            imageAssetPath = "Onboarding/socialproof3.jpeg")
     )
 
     StarryBackground {
         Column(
             modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -2173,16 +2212,21 @@ private fun SocialProofScreen(onNext: () -> Unit, onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(14.dp))
 
             // Overlapping avatars
-            Box(modifier = Modifier.height(48.dp).width(120.dp)) {
-                listOf("D" to Color(0xFF00ACC1), "J" to Color(0xFF5C6BC0), "K" to Color(0xFFFF6B00))
-                    .forEachIndexed { i, (initial, color) ->
-                        Box(
-                            modifier = Modifier.offset(x = (i * 36).dp).size(48.dp)
-                                .clip(RoundedCornerShape(50)).background(color)
-                                .border(2.dp, Color(0xFF060A14), RoundedCornerShape(50)),
-                            contentAlignment = Alignment.Center
-                        ) { Text(text = initial, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White) }
-                    }
+            Box(modifier = Modifier.height(96.dp).width(208.dp)) {
+                reviews.forEachIndexed { i, r ->
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data("file:///android_asset/${r.imageAssetPath}")
+                            .build(),
+                        contentDescription = r.name,
+                        modifier = Modifier
+                            .offset(x = (i * 56).dp)
+                            .size(96.dp)
+                            .clip(RoundedCornerShape(50))
+                            .border(3.dp, Color.White, RoundedCornerShape(50)),
+                        contentScale = ContentScale.Crop
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -2190,33 +2234,49 @@ private fun SocialProofScreen(onNext: () -> Unit, onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(bottom = 12.dp)
+            ) {
                 reviews.forEach { r ->
-                    Column(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF0D1B3E)).border(1.dp, Color(0xFF1E3060), RoundedCornerShape(12.dp))
-                            .padding(16.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(36.dp).clip(RoundedCornerShape(50)).background(r.bgColor), contentAlignment = Alignment.Center) {
-                                Text(text = r.initial, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    item {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF0D1B3E)).border(1.dp, Color(0xFF1E3060), RoundedCornerShape(12.dp))
+                                .padding(16.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data("file:///android_asset/${r.imageAssetPath}")
+                                        .build(),
+                                    contentDescription = r.name,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(50)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(text = r.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text(text = r.handle, fontSize = 12.sp, color = Color(0xFF666688))
+                                }
+                                Row { repeat(5) { Text(text = "★", fontSize = 12.sp, color = Color(0xFFFFD700)) } }
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = r.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text(text = r.handle, fontSize = 12.sp, color = Color(0xFF666688))
-                            }
-                            Row { repeat(5) { Text(text = "★", fontSize = 12.sp, color = Color(0xFFFFD700)) } }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(text = r.body, fontSize = 14.sp, color = Color(0xFFBBBBCC), lineHeight = 21.sp)
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(text = r.body, fontSize = 14.sp, color = Color(0xFFBBBBCC), lineHeight = 21.sp)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.weight(1f))
-            GradientButton(text = "Continue", onClick = onNext, modifier = Modifier.fillMaxWidth())
-            Spacer(modifier = Modifier.height(32.dp))
+            Column(modifier = Modifier.navigationBarsPadding()) {
+                GradientButton(text = "Continue", onClick = onNext, modifier = Modifier.fillMaxWidth())
+                Spacer(modifier = Modifier.height(16.dp))
+            }
         }
     }
 }
