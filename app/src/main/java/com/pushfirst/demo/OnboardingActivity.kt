@@ -82,9 +82,15 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.animateLottieCompositionAsState
+import com.airbnb.lottie.compose.rememberLottieComposition
 import com.pushfirst.demo.ui.theme.PushFirstTheme
 
 private const val PREFS_NAME = "pushfirst_prefs"
@@ -186,6 +192,8 @@ class OnboardingActivity : ComponentActivity() {
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        window.isNavigationBarContrastEnforced = false
 
         // CRITICAL: Initialize MediaPipe from Activity.onCreate() on main thread
         // MUST NOT be initialized inside Compose composition or LaunchedEffect
@@ -200,8 +208,8 @@ class OnboardingActivity : ComponentActivity() {
                 ) {
                     OnboardingFlow(
                         startPage = when {
-                            forcePaywall -> 17
-                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 17
+                            forcePaywall -> 20
+                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 20
                             else -> 0
                         },
                         monthlyPrice = monthlyPrice.value,
@@ -262,37 +270,40 @@ private fun OnboardingFlow(
     ) { currentPage ->
         when (currentPage) {
             0 -> SplashScreen(onNext = { page = 1 })
-            1 -> PreQuizScreen(onNext = { page = 2 })
+            1 -> PreQuizScreen(onNext = { page = 2 }, onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 0 }} else null)
             2 -> NameInputScreen(viewModel = viewModel, onNext = { page = 3 }, onBack = { page = 1 })
             3 -> GenderScreen(viewModel = viewModel, onNext = { page = 4 }, onBack = { page = 2 })
             4 -> PornFrequencyScreen(viewModel = viewModel, onNext = { page = 5 }, onBack = { page = 3 })
             5 -> AgeFirstExposureScreen(viewModel = viewModel, onNext = { page = 6 }, onBack = { page = 4 })
             6 -> EscalationScreen(viewModel = viewModel, onNext = { page = 7 }, onBack = { page = 5 })
-            7 -> TriedToQuitScreen(viewModel = viewModel, onNext = { page = 8 }, onBack = { page = 6 })
+            7 -> SymptomsScreen(viewModel = viewModel, onNext = { page = 8 }, onBack = { page = 6 })
             8 -> FeelingsScreen(viewModel = viewModel, onNext = { page = 9 }, onBack = { page = 7 })
-            9 -> SymptomsScreen(viewModel = viewModel, onNext = { page = 10 }, onBack = { page = 8 })
+            9 -> TriedToQuitScreen(viewModel = viewModel, onNext = { page = 10 }, onBack = { page = 8 })
             10 -> EducationCarouselScreen(onNext = { page = 11 }, onBack = { page = 9 })
             11 -> ScienceAgreeScreen(onNext = { page = 12 }, onBack = { page = 10 })
-            12 -> RewiringBenefitsScreen(onNext = { page = 13 }, onBack = { page = 11 })
-            13 -> GoalsScreen(viewModel = viewModel, onNext = { page = 14 }, onBack = { page = 12 })
-            14 -> SocialProofScreen(onNext = { page = 15 }, onBack = { page = 13 })
-            15 -> CameraTrialScreen(
+            12 -> HowItWorksBlockScreen(onNext = { page = 13 }, onBack = { page = 11 })
+            13 -> HowItWorksPushScreen(onNext = { page = 14 }, onBack = { page = 12 })
+            14 -> HowItWorksChoiceScreen(onNext = { page = 15 }, onBack = { page = 13 })
+            15 -> RewiringBenefitsScreen(onNext = { page = 16 }, onBack = { page = 14 })
+            16 -> GoalsScreen(viewModel = viewModel, onNext = { page = 17 }, onBack = { page = 15 })
+            17 -> SocialProofScreen(onNext = { page = 18 }, onBack = { page = 16 })
+            18 -> CameraTrialScreen(
                 poseAnalyzer = poseAnalyzer,
-                onNext = { page = 16 },
-                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 14 }} else null
+                onNext = { page = 19 },
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 17 }} else null
             )
-            16 -> YourPlanScreen(
+            19 -> YourPlanScreen(
                 viewModel = viewModel,
-                onNext = { page = 17 },
-                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 15 }} else null
+                onNext = { page = 20 },
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 18 }} else null
             )
-            17 -> PaywallScreen(
+            20 -> PaywallScreen(
                 monthlyPrice = monthlyPrice,
                 yearlyTotal = yearlyTotal,
                 yearlyMonthly = yearlyMonthly,
                 onStartTrial = onStartTrial,
                 onRestore = onRestore,
-                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 16 }} else null
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 19 }} else null
             )
         }
     }
@@ -377,7 +388,6 @@ private fun SplashScreen(onNext: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .systemBarsPadding()
     ) {
         // Layer 1: Full-screen background image
         AsyncImage(
@@ -482,7 +492,7 @@ private fun SplashScreen(onNext: () -> Unit) {
 // ─── Screen: Pre-Quiz ────────────────────────────────────────────────────────
 
 @Composable
-private fun PreQuizScreen(onNext: () -> Unit) {
+private fun PreQuizScreen(onNext: () -> Unit, onBack: (() -> Unit)? = null) {
     Box(modifier = Modifier.fillMaxSize()) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
@@ -516,6 +526,18 @@ private fun PreQuizScreen(onNext: () -> Unit) {
                 .padding(horizontal = 32.dp)
         ) {
             val screenHeight = maxHeight
+
+            if (onBack != null) {
+                Text(
+                    text = "←",
+                    fontSize = 24.sp,
+                    color = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = 8.dp)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() }
+                )
+            }
 
             Text(
                 text = "Welcome.",
@@ -1883,6 +1905,19 @@ private fun EducationCarouselScreen(onNext: () -> Unit, onBack: () -> Unit) {
             }
         }
 
+        if (AppConfig.SHOW_DEV_BACK_ARROWS) {
+            Text(
+                text = "←",
+                fontSize = 24.sp,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(start = 20.dp, top = 8.dp)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() }
+            )
+        }
+
         // Fixed bottom overlay — dots + button floating above the pager
         Column(
             modifier = Modifier
@@ -2057,19 +2092,144 @@ private fun ScienceAgreeScreen(onNext: () -> Unit, onBack: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth().height(56.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF2A2A2A))
-                    .border(1.dp, Color(0xFF444455), RoundedCornerShape(20.dp))
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.White)) { onNext() },
+                    .background(Color.White)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.Black)) { onNext() },
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "Continue", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(text = "See How PushFirst Works", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.Black)
             }
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
 
-// ─── Screen: Rewiring Benefits (page 11) ─────────────────────────────────────
+// ─── Screens: How It Works (pages 12–14) ─────────────────────────────────────
+
+@Composable
+private fun HowItWorksScreen(
+    lottieAssetPath: String,
+    title: String,
+    body: String,
+    titleFontSize: TextUnit = 42.sp,
+    onNext: () -> Unit,
+    onBack: () -> Unit
+) {
+    val composition by rememberLottieComposition(LottieCompositionSpec.Asset(lottieAssetPath))
+    val progress by animateLottieCompositionAsState(composition = composition, iterations = LottieConstants.IterateForever)
+    val bodySentences = remember(body) {
+        body.split(Regex("(?<=[.!?])\\s+"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        StarryBackground {}
+
+        Text(
+            text = "←",
+            fontSize = 24.sp,
+            color = Color.White,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 20.dp, top = 16.dp)
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() }
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Spacer(modifier = Modifier.weight(1f))
+
+            LottieAnimation(
+                composition = composition,
+                progress = { progress },
+                modifier = Modifier.fillMaxWidth().height(220.dp)
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(text = title, fontSize = titleFontSize, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00D4FF), textAlign = TextAlign.Center)
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (bodySentences.size > 1) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    bodySentences.forEach { sentence ->
+                        Text(
+                            text = sentence,
+                            fontSize = 21.sp,
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 30.sp
+                        )
+                    }
+                }
+            } else {
+                Text(text = body, fontSize = 21.sp, color = Color.White, textAlign = TextAlign.Center, lineHeight = 30.sp)
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 32.dp)
+                    .height(56.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.Black)) { onNext() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = "Continue", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HowItWorksBlockScreen(onNext: () -> Unit, onBack: () -> Unit) {
+    HowItWorksScreen(
+        lottieAssetPath = "Onboarding/Simple Rejected Animation.json",
+        title = "Step 1 — Block.",
+        body = "The moment you visit an adult site, PushFirst steps in. The urge gets intercepted before it wins.",
+        onNext = onNext,
+        onBack = onBack
+    )
+}
+
+@Composable
+private fun HowItWorksPushScreen(onNext: () -> Unit, onBack: () -> Unit) {
+    HowItWorksScreen(
+        lottieAssetPath = "Onboarding/Military Push Ups.json",
+        title = "Step 2 — Push.",
+        body = "Do push-ups to unlock. The AI counts every rep in real time.",
+        onNext = onNext,
+        onBack = onBack
+    )
+}
+
+@Composable
+private fun HowItWorksChoiceScreen(onNext: () -> Unit, onBack: () -> Unit) {
+    HowItWorksScreen(
+        lottieAssetPath = "Onboarding/Sandy Loading.json",
+        title = "Step 3 — Decide.",
+        body = "After your reps, you earn 15 minutes. By then, most urges are already gone. You did the work — now you decide.",
+        titleFontSize = 36.sp,
+        onNext = onNext,
+        onBack = onBack
+    )
+}
+
+// ─── Screen: Rewiring Benefits (page 15) ─────────────────────────────────────
 
 @Composable
 private fun RewiringBenefitsScreen(onNext: () -> Unit, onBack: () -> Unit) {
@@ -2290,7 +2450,20 @@ private fun SocialProofScreen(onNext: () -> Unit, onBack: () -> Unit) {
             modifier = Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(24.dp))
+            if (AppConfig.SHOW_DEV_BACK_ARROWS) {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 8.dp)) {
+                    Text(
+                        text = "←",
+                        fontSize = 24.sp,
+                        color = Color.White,
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() }
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.height(24.dp))
+            }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 Text(text = "🌿", fontSize = 26.sp)
@@ -2428,7 +2601,7 @@ private fun CameraTrialSelectState(onPushUps: () -> Unit, onSkip: () -> Unit, on
             }
 
             Column {
-                Text(text = "Try out the AI push-up detector!", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, lineHeight = 32.sp)
+                Text(text = "Try out the AI push-up detector!", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, lineHeight = 36.sp)
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(text = "You can also skip this", fontSize = 14.sp, color = Color(0xFF888888))
                 Spacer(modifier = Modifier.height(20.dp))
