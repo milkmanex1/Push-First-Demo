@@ -25,11 +25,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import android.graphics.BitmapFactory
+import android.media.SoundPool
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.decode.GifDecoder
@@ -100,7 +105,6 @@ class OnboardingViewModel {
     var triedToQuit by mutableStateOf<List<String>>(emptyList())
     var feelingsAfter by mutableStateOf<List<String>>(emptyList())
     var goals by mutableStateOf<List<String>>(emptyList())
-    var referralSource by mutableStateOf("")
     var reminderTime by mutableStateOf("")
 }
 
@@ -108,6 +112,8 @@ class OnboardingActivity : ComponentActivity() {
 
     private val SKIP_ONBOARDING_FOR_DEV = false
     private lateinit var billingManager: BillingManager
+    private var onboardingPoseAnalyzer: PoseAnalyzer? = null
+    private val cameraExecutorForOnboarding = lazy { Executors.newSingleThreadExecutor() }
 
     // Prices populated from Play once product details load; Compose observes these automatically
     private val monthlyPrice = androidx.compose.runtime.mutableStateOf<String?>(null)
@@ -181,6 +187,11 @@ class OnboardingActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = android.graphics.Color.TRANSPARENT
 
+        // CRITICAL: Initialize MediaPipe from Activity.onCreate() on main thread
+        // MUST NOT be initialized inside Compose composition or LaunchedEffect
+        onboardingPoseAnalyzer = PoseAnalyzer(context = this)
+        onboardingPoseAnalyzer?.initialize()
+
         setContent {
             PushFirstTheme {
                 Surface(
@@ -189,13 +200,14 @@ class OnboardingActivity : ComponentActivity() {
                 ) {
                     OnboardingFlow(
                         startPage = when {
-                            forcePaywall -> 18
-                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 18
+                            forcePaywall -> 17
+                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 17
                             else -> 0
                         },
                         monthlyPrice = monthlyPrice.value,
                         yearlyTotal = yearlyTotal.value,
                         yearlyMonthly = yearlyMonthly.value,
+                        poseAnalyzer = onboardingPoseAnalyzer,
                         onStartTrial = { planId ->
                             billingManager.launchPurchaseFlow(this@OnboardingActivity, planId)
                         },
@@ -211,6 +223,9 @@ class OnboardingActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         if (::billingManager.isInitialized) billingManager.destroy()
+        onboardingPoseAnalyzer?.close()
+        onboardingPoseAnalyzer = null
+        if (cameraExecutorForOnboarding.isInitialized()) cameraExecutorForOnboarding.value.shutdown()
     }
 
     private fun launchMain() {
@@ -225,6 +240,7 @@ private fun OnboardingFlow(
     monthlyPrice: String?,
     yearlyTotal: String?,
     yearlyMonthly: String?,
+    poseAnalyzer: PoseAnalyzer?,
     onStartTrial: (planId: String) -> Unit,
     onRestore: () -> Unit
 ) {
@@ -246,36 +262,37 @@ private fun OnboardingFlow(
     ) { currentPage ->
         when (currentPage) {
             0 -> SplashScreen(onNext = { page = 1 })
-            1 -> NameInputScreen(viewModel = viewModel, onNext = { page = 2 }, onBack = { page = 0 })
-            2 -> GenderScreen(viewModel = viewModel, onNext = { page = 3 }, onBack = { page = 1 })
-            3 -> PornFrequencyScreen(viewModel = viewModel, onNext = { page = 4 }, onBack = { page = 2 })
-            4 -> AgeFirstExposureScreen(viewModel = viewModel, onNext = { page = 5 }, onBack = { page = 3 })
-            5 -> EscalationScreen(viewModel = viewModel, onNext = { page = 6 }, onBack = { page = 4 })
-            6 -> TriedToQuitScreen(viewModel = viewModel, onNext = { page = 7 }, onBack = { page = 5 })
-            7 -> FeelingsScreen(viewModel = viewModel, onNext = { page = 8 }, onBack = { page = 6 })
-            8 -> SymptomsScreen(viewModel = viewModel, onNext = { page = 9 }, onBack = { page = 7 })
-            9 -> EducationCarouselScreen(onNext = { page = 10 }, onBack = { page = 8 })
-            10 -> ScienceAgreeScreen(onNext = { page = 11 }, onBack = { page = 9 })
-            11 -> RewiringBenefitsScreen(onNext = { page = 13 }, onBack = { page = 10 })
-            13 -> GoalsScreen(viewModel = viewModel, onNext = { page = 14 }, onBack = { page = 11 })
+            1 -> PreQuizScreen(onNext = { page = 2 })
+            2 -> NameInputScreen(viewModel = viewModel, onNext = { page = 3 }, onBack = { page = 1 })
+            3 -> GenderScreen(viewModel = viewModel, onNext = { page = 4 }, onBack = { page = 2 })
+            4 -> PornFrequencyScreen(viewModel = viewModel, onNext = { page = 5 }, onBack = { page = 3 })
+            5 -> AgeFirstExposureScreen(viewModel = viewModel, onNext = { page = 6 }, onBack = { page = 4 })
+            6 -> EscalationScreen(viewModel = viewModel, onNext = { page = 7 }, onBack = { page = 5 })
+            7 -> TriedToQuitScreen(viewModel = viewModel, onNext = { page = 8 }, onBack = { page = 6 })
+            8 -> FeelingsScreen(viewModel = viewModel, onNext = { page = 9 }, onBack = { page = 7 })
+            9 -> SymptomsScreen(viewModel = viewModel, onNext = { page = 10 }, onBack = { page = 8 })
+            10 -> EducationCarouselScreen(onNext = { page = 11 }, onBack = { page = 9 })
+            11 -> ScienceAgreeScreen(onNext = { page = 12 }, onBack = { page = 10 })
+            12 -> RewiringBenefitsScreen(onNext = { page = 13 }, onBack = { page = 11 })
+            13 -> GoalsScreen(viewModel = viewModel, onNext = { page = 14 }, onBack = { page = 12 })
             14 -> SocialProofScreen(onNext = { page = 15 }, onBack = { page = 13 })
-            15 -> ReferralSourceScreen(viewModel = viewModel, onNext = { page = 16 }, onBack = { page = 14 })
-            16 -> CameraTrialScreen(
+            15 -> CameraTrialScreen(
+                poseAnalyzer = poseAnalyzer,
+                onNext = { page = 16 },
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 14 }} else null
+            )
+            16 -> YourPlanScreen(
+                viewModel = viewModel,
                 onNext = { page = 17 },
                 onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 15 }} else null
             )
-            17 -> YourPlanScreen(
-                viewModel = viewModel,
-                onNext = { page = 18 },
-                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 16 }} else null
-            )
-            18 -> PaywallScreen(
+            17 -> PaywallScreen(
                 monthlyPrice = monthlyPrice,
                 yearlyTotal = yearlyTotal,
                 yearlyMonthly = yearlyMonthly,
                 onStartTrial = onStartTrial,
                 onRestore = onRestore,
-                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 17 }} else null
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 16 }} else null
             )
         }
     }
@@ -457,6 +474,90 @@ private fun SplashScreen(onNext: () -> Unit) {
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(48.dp))
+            }
+        }
+    }
+}
+
+// ─── Screen: Pre-Quiz ────────────────────────────────────────────────────────
+
+@Composable
+private fun PreQuizScreen(onNext: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data("file:///android_asset/Onboarding/splash1.jpeg")
+                .build(),
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xFF010510).copy(alpha = 0.85f),
+                            Color(0xFF010510)
+                        )
+                    )
+                )
+        )
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(horizontal = 32.dp)
+        ) {
+            val screenHeight = maxHeight
+
+            Text(
+                text = "Welcome.",
+                fontSize = 54.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = screenHeight * 0.10f)
+            )
+
+            Column(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = buildAnnotatedString {
+                        withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
+                            append("Let's find out if you have a problem with ")
+                        }
+                        withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
+                            append("porn")
+                        }
+                        withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
+                            append(".")
+                        }
+                    },
+                    fontSize = 29.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 42.sp,
+                    modifier = Modifier.padding(bottom = 88.dp)
+                )
+                GradientButton(
+                    text = "Start Quiz →",
+                    onClick = onNext,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 48.dp)
+                )
             }
         }
     }
@@ -1942,7 +2043,7 @@ private fun ScienceAgreeScreen(onNext: () -> Unit, onBack: () -> Unit) {
                 style = androidx.compose.ui.text.TextStyle(textAlign = TextAlign.Center),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp),
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
                 onClick = { offset ->
                     citationText.getStringAnnotations(tag = "URL", start = offset, end = offset)
                         .firstOrNull()?.let { annotation ->
@@ -1992,23 +2093,23 @@ private fun RewiringBenefitsScreen(onNext: () -> Unit, onBack: () -> Unit) {
         Expert("T", "Tyler — PushFirst user",
             "I feel like a different person!",
             "3 weeks in. I'm talking more, sleeping better, actually present with people. Didn't expect it to hit this fast..", blueCheck = true,
-            imageAssetPath = "Icon/temp.png"),
+            imageAssetPath = "Onboarding/testimonial2.jpeg"),
         Expert("A", "Aiden — PushFirst user",
             "My friends noticed before I said anything.",
             "Didn't tell anyone what I was doing. Two weeks later my mate asked what changed. He told me I was way more talkative, witty, and sociable.", blueCheck = true,
-            imageAssetPath = "Icon/temp.png"),
+            imageAssetPath = "Onboarding/testimonial3.jpeg"),
         Expert("N", "Noah — PushFirst user",
             "500 push-ups a week and I didn't plan any of it.",
             "Started as punishment basically. Now people at the gym are asking what I'm on. Not gonna lie, it feels great.", blueCheck = true,
-            imageAssetPath = "Icon/temp.png"),
+            imageAssetPath = "Onboarding/testimonial4.jpeg"),
         Expert("L", "Liam — PushFirst user",
             "Gone up a shirt size. Walk differently now.",
             "3 months in. The muscle is real. The confidence is real. Didn't expect both to come from the same thing.", blueCheck = true,
-            imageAssetPath = "Icon/temp.png"),
+            imageAssetPath = "Onboarding/testimonial7.jpeg"),
         Expert("E", "Ethan — PushFirst user",
             "Turns out I wasn't lazy. I was just drained.",
             "Woke up before my alarm wanting to do stuff. Hadn't happened in years. Week two.", blueCheck = true,
-            imageAssetPath = "Icon/temp.png"),
+            imageAssetPath = "Onboarding/testimonial6.jpeg"),
         Expert("K", "Anonymous — PushFirst user",
             "Life feels colorful again.",
             "Rediscovering things I abandoned years ago. Didn't realize how much was being taken until it stopped.", blueCheck = true,
@@ -2281,62 +2382,12 @@ private fun SocialProofScreen(onNext: () -> Unit, onBack: () -> Unit) {
     }
 }
 
-// ─── Screen: Referral Source (page 15) ───────────────────────────────────────
-
-@Composable
-private fun ReferralSourceScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBack: () -> Unit) {
-    val options = listOf("📱" to "TikTok", "📸" to "Instagram", "▶️" to "YouTube", "🔍" to "Google", "👥" to "Friend or family", "📰" to "Other")
-    val scope = rememberCoroutineScope()
-    var localSelection by remember { mutableStateOf("") }
-
-    StarryBackground {
-        Column(modifier = Modifier.fillMaxSize()) {
-            QuizTopBar(currentPage = 15, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
-            Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 28.dp),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Spacer(modifier = Modifier.height(28.dp))
-                    Text(text = "One last thing,", fontSize = 14.sp, color = Color(0xFF888888))
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(text = "Where did you hear about us?", fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, lineHeight = 34.sp)
-                }
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    options.forEach { (emoji, label) ->
-                        val isSelected = localSelection == label
-                        Row(
-                            modifier = Modifier.fillMaxWidth().height(54.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(if (isSelected) Color(0xFF00D4FF) else Color(0xFF111122))
-                                .border(if (isSelected) 2.dp else 1.dp, if (isSelected) Color(0xFF00D4FF) else Color(0xFF2A2A44), RoundedCornerShape(50))
-                                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color(0xFF00D4FF))) {
-                                    localSelection = label
-                                    viewModel.referralSource = label
-                                    scope.launch { kotlinx.coroutines.delay(300); onNext() }
-                                }
-                                .padding(horizontal = 20.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = emoji, fontSize = 18.sp)
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Text(text = label, fontSize = 15.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isSelected) Color(0xFF001A33) else Color.White)
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(48.dp))
-            }
-        }
-    }
-}
-
-// ─── Screen: Camera Trial (page 16) ──────────────────────────────────────────
+// ─── Screen: Camera Trial (page 15) ──────────────────────────────────────────
 
 private enum class CameraTrialState { SELECT, SETUP, INSTRUCTION, ACTIVE }
 
 @Composable
-private fun CameraTrialScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
+private fun CameraTrialScreen(poseAnalyzer: PoseAnalyzer?, onNext: () -> Unit, onBack: (() -> Unit)?) {
     var state by remember { mutableStateOf(CameraTrialState.SELECT) }
 
     when (state) {
@@ -2354,6 +2405,7 @@ private fun CameraTrialScreen(onNext: () -> Unit, onBack: (() -> Unit)?) {
             onBack = { state = CameraTrialState.SETUP }
         )
         CameraTrialState.ACTIVE -> CameraTrialActiveState(
+            poseAnalyzer = poseAnalyzer,
             onDone = onNext,
             onSkip = onNext
         )
@@ -2392,7 +2444,7 @@ private fun CameraTrialSelectState(onPushUps: () -> Unit, onSkip: () -> Unit, on
                 Row(
                     modifier = Modifier.fillMaxWidth().height(72.dp)
                         .clip(RoundedCornerShape(16.dp)).background(Color(0xFF0D1B3E))
-                        .border(1.dp, Color(0xFF1E3060), RoundedCornerShape(16.dp))
+                        .border(2.dp, Color(0xFF4DA3FF), RoundedCornerShape(16.dp))
                         .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color(0xFF00D4FF))) { onPushUps() }
                         .padding(horizontal = 20.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -2407,7 +2459,7 @@ private fun CameraTrialSelectState(onPushUps: () -> Unit, onSkip: () -> Unit, on
                 Row(
                     modifier = Modifier.fillMaxWidth().height(72.dp)
                         .clip(RoundedCornerShape(16.dp)).background(Color(0xFF0A0F1E))
-                        .border(1.dp, Color(0xFF1A1A2A), RoundedCornerShape(16.dp))
+                        .border(2.dp, Color(0xFF5A5A78), RoundedCornerShape(16.dp))
                         .padding(horizontal = 20.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -2572,7 +2624,7 @@ private fun CameraTrialSetupState(onContinue: () -> Unit, onBack: () -> Unit) {
 }
 
 @Composable
-private fun CameraTrialActiveState(onDone: () -> Unit, onSkip: () -> Unit) {
+private fun CameraTrialActiveState(poseAnalyzer: PoseAnalyzer?, onDone: () -> Unit, onSkip: () -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -2582,20 +2634,62 @@ private fun CameraTrialActiveState(onDone: () -> Unit, onSkip: () -> Unit) {
     var previewViewRef by remember { mutableStateOf<PreviewView?>(null) }
     var cameraProviderRef by remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
-    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
-    val poseAnalyzer = remember {
-        PoseAnalyzer(context = context, onRepCountChanged = { repCount = it }, onStateChanged = {}, onValidPoseChanged = {})
-    }
+    val orbScale = remember { Animatable(1f) }
+    var lastRepCount by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(Unit) { poseAnalyzer.initialize() }
+    val soundPool = remember {
+        SoundPool.Builder()
+            .setMaxStreams(3)
+            .setAudioAttributes(
+                android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_GAME)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .build()
+    }
+    var soundId by remember { mutableIntStateOf(0) }
+    var soundLoaded by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        while (true) { kotlinx.coroutines.delay(33); landmarks = poseAnalyzer.getCurrentLandmarks() }
+        soundId = soundPool.load(context, R.raw.rep_count_flashpoint, 1)
+        soundPool.setOnLoadCompleteListener { _, _, status ->
+            if (status == 0) soundLoaded = true
+        }
+    }
+
+    LaunchedEffect(repCount) {
+        if (repCount > lastRepCount) {
+            lastRepCount = repCount
+            if (soundLoaded && soundId != 0) {
+                soundPool.play(soundId, 1f, 1f, 1, 0, 1f)
+            }
+            orbScale.animateTo(1.28f, animationSpec = tween(80, easing = FastOutSlowInEasing))
+            orbScale.animateTo(1.0f, animationSpec = tween(220, easing = FastOutSlowInEasing))
+        }
+    }
+
+    val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+
+    // Wire callbacks to local state — analyzer was initialized in Activity.onCreate()
+    DisposableEffect(poseAnalyzer) {
+        poseAnalyzer?.onRepCountChanged = { repCount = it }
+        poseAnalyzer?.onStateChanged = {}
+        poseAnalyzer?.onValidPoseChanged = {}
+        onDispose {
+            poseAnalyzer?.onRepCountChanged = {}
+            poseAnalyzer?.onStateChanged = {}
+            poseAnalyzer?.onValidPoseChanged = {}
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) { kotlinx.coroutines.delay(33); landmarks = poseAnalyzer?.getCurrentLandmarks() }
     }
 
     LaunchedEffect(previewViewRef) {
         val pv = previewViewRef ?: return@LaunchedEffect
-        while (!poseAnalyzer.isPoseLandmarkerInitialized()) { kotlinx.coroutines.delay(100) }
+        while (poseAnalyzer?.isPoseLandmarkerInitialized() != true) { kotlinx.coroutines.delay(100) }
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
             val provider = future.get()
@@ -2604,62 +2698,117 @@ private fun CameraTrialActiveState(onDone: () -> Unit, onSkip: () -> Unit) {
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
-                .build().also { it.setAnalyzer(cameraExecutor) { img -> poseAnalyzer.analyzeFrame(img) } }
+                .build().also { it.setAnalyzer(cameraExecutor) { img -> poseAnalyzer?.analyzeFrame(img) } }
             provider.unbindAll()
             provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_FRONT_CAMERA, preview, analysis)
         }, ContextCompat.getMainExecutor(context))
     }
 
-    LaunchedEffect(repCount) {
-        if (repCount >= 3) { kotlinx.coroutines.delay(800); onDone() }
-    }
-
     DisposableEffect(Unit) {
-        onDispose { cameraProviderRef?.unbindAll(); poseAnalyzer.close(); cameraExecutor.shutdown() }
+        onDispose {
+            cameraProviderRef?.unbindAll()
+            cameraExecutor.shutdown()
+            soundPool.release()
+            // poseAnalyzer is owned by OnboardingActivity — do NOT close it here
+        }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        AndroidView(
-            factory = { ctx -> PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER; previewViewRef = this } },
-            modifier = Modifier.fillMaxSize()
-        )
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Camera area — 70%
+        Box(modifier = Modifier.fillMaxWidth().weight(0.7f)) {
+            AndroidView(
+                factory = { ctx -> PreviewView(ctx).apply { scaleType = PreviewView.ScaleType.FILL_CENTER; previewViewRef = this } },
+                modifier = Modifier.fillMaxSize()
+            )
 
-        PoseOverlay(landmarks = landmarks, modifier = Modifier.fillMaxSize())
+            PoseOverlay(landmarks = landmarks, modifier = Modifier.fillMaxSize())
 
-        // Rep counter badge
-        Box(
-            modifier = Modifier.align(Alignment.Center).size(100.dp)
-                .clip(RoundedCornerShape(50)).background(Color(0xFF00D4FF).copy(alpha = 0.85f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(text = "$repCount", fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
-                Text(text = "/ 3", fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f))
+            val orbBaseColor = when {
+                repCount >= 15 -> Color(0xFFB347FF) // bright purple
+                repCount >= 10 -> Color(0xFFFF8C00) // bright orange
+                repCount >= 5 -> Color(0xFF39FF14) // bright green
+                else -> Color(0xFF00D4FF) // default cyan
+            }
+
+            // Glowing animated orb counter
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 8.dp)
+                    .offset(y = 34.dp)
+                    .size(224.dp)
+                    .graphicsLayer(scaleX = orbScale.value, scaleY = orbScale.value),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    val radius = size.width / 2f
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(orbBaseColor.copy(alpha = 0.25f), Color.Transparent),
+                            center = center, radius = radius
+                        ),
+                        radius = radius, center = center
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(orbBaseColor.copy(alpha = 0.55f), orbBaseColor.copy(alpha = 0.30f), Color.Transparent),
+                            center = center, radius = radius * 0.75f
+                        ),
+                        radius = radius * 0.75f, center = center
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFFFFFFFF).copy(alpha = 0.95f), orbBaseColor.copy(alpha = 0.85f), orbBaseColor.copy(alpha = 0.60f)),
+                            center = center, radius = radius * 0.45f
+                        ),
+                        radius = radius * 0.45f, center = center
+                    )
+                }
+                Text(
+                    text = "$repCount",
+                    fontSize = 58.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    style = LocalTextStyle.current.copy(
+                        shadow = Shadow(
+                            color = Color(0xFF003344),
+                            offset = Offset(0f, 1f),
+                            blurRadius = 4f
+                        )
+                    )
+                )
+            }
+
+            // Top hint card
+            Box(
+                modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp, start = 20.dp, end = 20.dp)
+                    .clip(RoundedCornerShape(12.dp)).background(Color(0xFF0A0A14).copy(alpha = 0.85f))
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "📷", fontSize = 16.sp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "Keep your whole body in frame.", fontSize = 13.sp, color = Color.White)
+                }
             }
         }
 
-        // Top hint card
+        // Bottom dark panel — 30%
         Box(
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 12.dp, start = 20.dp, end = 20.dp)
-                .clip(RoundedCornerShape(12.dp)).background(Color(0xFF0A0A14).copy(alpha = 0.85f))
-                .padding(horizontal = 16.dp, vertical = 10.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(text = "📷", fontSize = 16.sp)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "Keep your whole body in frame.", fontSize = 13.sp, color = Color.White)
-            }
-        }
-
-        // Try later button
-        Box(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .padding(horizontal = 28.dp, vertical = 20.dp).navigationBarsPadding()
-                .height(52.dp).clip(RoundedCornerShape(50)).border(1.dp, Color(0xFF444455), RoundedCornerShape(50))
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.White)) { onSkip() },
+            modifier = Modifier.fillMaxWidth().weight(0.3f)
+                .background(Color(0xFF060A14))
+                .navigationBarsPadding(),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "Try later", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp)
+                    .height(52.dp).clip(RoundedCornerShape(50)).border(2.dp, Color(0xFF00D4FF), RoundedCornerShape(50))
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.White)) { onSkip() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = if (repCount > 1) "Finish Pushups" else "Try later", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            }
         }
     }
 }
@@ -2753,17 +2902,37 @@ private fun PaywallScreen(
     val resolvedYearlyTotal = yearlyTotal ?: "$35.99"
     val resolvedYearlyMonthly = yearlyMonthly ?: "$2.99"
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
-    ) {
-        OnboardingTopBar(currentPage = 5, pageCount = 6, onBack = onBack)
+    StarryBackground {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (onBack != null) {
+                    Text(
+                        text = "←",
+                        fontSize = 24.sp,
+                        color = Color.White,
+                        modifier = Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onBack() }
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(24.dp))
+                }
+            }
 
-        Spacer(modifier = Modifier.weight(0.2f))
+            Spacer(modifier = Modifier.weight(0.2f))
 
         Text(
             text = "Start your journey",
@@ -2806,38 +2975,40 @@ private fun PaywallScreen(
 
         Spacer(modifier = Modifier.height(28.dp))
 
-        // Trial timeline
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color(0xFF1A1A1A))
-                .padding(horizontal = 20.dp, vertical = 18.dp)
-        ) {
+        if (selectedPlan == BASE_PLAN_YEARLY) {
+            // Trial timeline
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF101C36))
+                    .padding(horizontal = 20.dp, vertical = 18.dp)
+            ) {
+                Text(
+                    text = "Your free trial timeline",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF888888),
+                    modifier = Modifier.padding(bottom = 14.dp)
+                )
+                TimelineRow(dot = "🟢", day = "Today", detail = "Full access starts")
+                TimelineConnector()
+                TimelineRow(dot = "🔔", day = "Day 6", detail = "Reminder before billing")
+                TimelineConnector()
+                TimelineRow(dot = "💳", day = "Day 7", detail = "Billing starts")
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Text(
-                text = "Your free trial timeline",
+                text = "No payment due now",
                 fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
                 color = Color(0xFF888888),
-                modifier = Modifier.padding(bottom = 14.dp)
+                textAlign = TextAlign.Center
             )
-            TimelineRow(dot = "🟢", day = "Today", detail = "Full access starts")
-            TimelineConnector()
-            TimelineRow(dot = "🔔", day = "Day 6", detail = "Reminder before billing")
-            TimelineConnector()
-            TimelineRow(dot = "💳", day = "Day 7", detail = "Billing starts")
+
+            Spacer(modifier = Modifier.height(12.dp))
         }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = "No payment due now",
-            fontSize = 13.sp,
-            color = Color(0xFF888888),
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
 
         // Dynamic subscription terms
         Text(
@@ -2909,7 +3080,8 @@ private fun PaywallScreen(
             }
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+        }
     }
 }
 
@@ -2925,7 +3097,7 @@ private fun PlanCard(
     onClick: () -> Unit
 ) {
     val borderColor = if (selected) Color.White else Color(0xFF333333)
-    val bgColor = if (selected) Color(0xFF1E1E1E) else Color(0xFF111111)
+    val bgColor = if (selected) Color(0xFF1B2A4A) else Color(0xFF101C36)
 
     // Outer Box — top padding creates a consistent slot for the badge on both cards
     Box(

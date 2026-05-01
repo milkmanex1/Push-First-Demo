@@ -33,9 +33,9 @@ import java.io.ByteArrayOutputStream
  */
 class PoseAnalyzer(
     private val context: Context,
-    private val onRepCountChanged: (Int) -> Unit = {},
-    private val onStateChanged: (PushupState) -> Unit = {},
-    private val onValidPoseChanged: (Boolean) -> Unit = {}
+    var onRepCountChanged: (Int) -> Unit = {},
+    var onStateChanged: (PushupState) -> Unit = {},
+    var onValidPoseChanged: (Boolean) -> Unit = {}
 ) {
     private var poseLandmarker: PoseLandmarker? = null
     private var currentState: PushupState = PushupState.UNKNOWN
