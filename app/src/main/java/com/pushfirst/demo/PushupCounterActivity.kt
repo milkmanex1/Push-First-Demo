@@ -34,7 +34,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.res.painterResource
+import android.media.SoundPool
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
 import android.graphics.BitmapFactory
@@ -410,6 +416,30 @@ fun PushupCounterScreen(
 ) {
     val context = LocalContext.current
 
+    val orbScale = remember { Animatable(1f) }
+    var lastRepCount by remember { mutableIntStateOf(0) }
+
+    val soundPool = remember { SoundPool.Builder().setMaxStreams(3).build() }
+    var soundId by remember { mutableIntStateOf(0) }
+    var soundLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        soundId = soundPool.load(context, R.raw.rep_count_flashpoint, 1)
+        soundPool.setOnLoadCompleteListener { _, _, status -> if (status == 0) soundLoaded = true }
+    }
+
+    LaunchedEffect(repCount) {
+        if (repCount > lastRepCount) {
+            lastRepCount = repCount
+            if (soundLoaded && soundId != 0) soundPool.play(soundId, 1f, 1f, 1, 0, 1f)
+            orbScale.animateTo(1.28f, animationSpec = tween(80, easing = FastOutSlowInEasing))
+            orbScale.animateTo(1.0f, animationSpec = tween(220, easing = FastOutSlowInEasing))
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { soundPool.release() }
+    }
+
     // Show unlock screen if completed
     if (repCount >= 20) {
             // Store unlock timestamp when first reaching 20
@@ -475,35 +505,60 @@ fun PushupCounterScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Overlay with count
+            // Glowing animated orb counter
+            val orbBaseColor = when {
+                repCount >= 15 -> Color(0xFFB347FF)
+                repCount >= 10 -> Color(0xFFFF8C00)
+                repCount >= 5  -> Color(0xFF39FF14)
+                else           -> Color(0xFF00D4FF)
+            }
+
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = 64.dp, start = 24.dp, end = 24.dp)
+                    .align(Alignment.BottomCenter)
+                    .offset(y = 34.dp)
+                    .size(224.dp)
+                    .graphicsLayer(scaleX = orbScale.value, scaleY = orbScale.value),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .background(
-                            brush = Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFF6A5ACD).copy(alpha = 0.85f), // SlateBlue - bottom left
-                                    Color(0xFF9370DB).copy(alpha = 0.85f), // MediumPurple - middle
-                                    Color(0xFF4169E1).copy(alpha = 0.85f)  // RoyalBlue - top right
-                                ),
-                                start = Offset(0f, 500f), // bottom left
-                                end = Offset(500f, 0f)    // top right
-                            ),
-                            shape = RoundedCornerShape(28.dp)
-                        )
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = "$repCount / 20",
-                        fontSize = 56.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    val radius = size.width / 2f
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(orbBaseColor.copy(alpha = 0.25f), Color.Transparent),
+                            center = center, radius = radius
+                        ),
+                        radius = radius, center = center
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(orbBaseColor.copy(alpha = 0.55f), orbBaseColor.copy(alpha = 0.30f), Color.Transparent),
+                            center = center, radius = radius * 0.75f
+                        ),
+                        radius = radius * 0.75f, center = center
+                    )
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(Color(0xFFFFFFFF).copy(alpha = 0.95f), orbBaseColor.copy(alpha = 0.85f), orbBaseColor.copy(alpha = 0.60f)),
+                            center = center, radius = radius * 0.45f
+                        ),
+                        radius = radius * 0.45f, center = center
                     )
                 }
+                Text(
+                    text = "$repCount",
+                    fontSize = 58.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White,
+                    style = LocalTextStyle.current.copy(
+                        shadow = Shadow(
+                            color = Color(0xFF003344),
+                            offset = Offset(0f, 1f),
+                            blurRadius = 4f
+                        )
+                    )
+                )
             }
         }
 

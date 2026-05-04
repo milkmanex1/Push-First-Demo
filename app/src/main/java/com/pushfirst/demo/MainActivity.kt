@@ -212,7 +212,7 @@ class MainActivity : ComponentActivity() {
                 )
 
                 Text(
-                    text = "1. Enable two permissions below",
+                    text = "1. Enable three permissions below",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Start,
                     modifier = Modifier
