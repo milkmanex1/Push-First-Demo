@@ -785,7 +785,7 @@ fun UnlockScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "15 Minutes Unlocked.",
+                text = "45 Minutes Unlocked.",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.White,

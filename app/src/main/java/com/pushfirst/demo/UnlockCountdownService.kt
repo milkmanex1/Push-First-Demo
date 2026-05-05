@@ -138,11 +138,11 @@ class UnlockCountdownService : Service() {
     private fun updateNotificationExpired() {
         // Use app icon instead of system icon
         val iconRes = try {
-            R.mipmap.ic_launcher
+            R.mipmap.app_icon
         } catch (e: Exception) {
             android.R.drawable.ic_dialog_info // Fallback to system icon
         }
-        
+
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("🔒 Access expired")
             .setContentText("Your unlock time has expired")
@@ -165,11 +165,11 @@ class UnlockCountdownService : Service() {
         
         // Use app icon instead of system icon for better visibility
         val iconRes = try {
-            R.mipmap.ic_launcher
+            R.mipmap.app_icon
         } catch (e: Exception) {
             android.R.drawable.ic_dialog_info // Fallback to system icon
         }
-        
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("🔓 $timeText remaining")
             .setContentText("Unlock time countdown")

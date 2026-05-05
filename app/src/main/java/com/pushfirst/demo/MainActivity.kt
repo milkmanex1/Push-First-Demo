@@ -230,7 +230,7 @@ class MainActivity : ComponentActivity() {
                 )
 
                 Text(
-                    text = "3. Get blocked → do 20 push-ups → unlock 15 mins",
+                    text = "3. Get blocked → do 20 push-ups → unlock 45 mins",
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Start,
                     modifier = Modifier

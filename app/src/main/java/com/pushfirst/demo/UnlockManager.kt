@@ -11,8 +11,12 @@ import android.content.SharedPreferences
 object UnlockManager {
     private const val PREFS_NAME = "pushfirst_unlock_prefs"
     private const val KEY_UNLOCK_TIMESTAMP = "unlock_timestamp"
-    private val UNLOCK_DURATION_MS = AppConfig.UNLOCK_DURATION_MS
+    private const val KEY_UNLOCK_DURATION_MS = "unlock_duration_ms"
+    private const val KEY_INSTALL_TIME = "install_time"
     private const val KEY_BLOCKING_BYPASS_UNTIL = "blocking_bypass_until"
+
+    private fun getInstallTime(context: Context): Long =
+        context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
 
     /**
      * Store the current timestamp as unlock time
@@ -21,6 +25,8 @@ object UnlockManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .putLong(KEY_UNLOCK_TIMESTAMP, System.currentTimeMillis())
+            .putLong(KEY_UNLOCK_DURATION_MS, AppConfig.UNLOCK_DURATION_MS)
+            .putLong(KEY_INSTALL_TIME, getInstallTime(context))
             .apply()
     }
 
@@ -30,34 +36,30 @@ object UnlockManager {
     fun isUnlocked(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val unlockTimestamp = prefs.getLong(KEY_UNLOCK_TIMESTAMP, 0L)
-        
-        if (unlockTimestamp == 0L) {
-            return false // Never unlocked
-        }
-        
+
+        if (unlockTimestamp == 0L) return false
+
+        val savedInstallTime = prefs.getLong(KEY_INSTALL_TIME, 0L)
+        if (savedInstallTime != getInstallTime(context)) return false
+
+        val grantedDuration = prefs.getLong(KEY_UNLOCK_DURATION_MS, AppConfig.UNLOCK_DURATION_MS)
         val elapsed = System.currentTimeMillis() - unlockTimestamp
-        return elapsed < UNLOCK_DURATION_MS
+        return elapsed < grantedDuration
     }
 
     /**
      * Get remaining unlock time in seconds (0 if expired)
      */
     fun getRemainingSeconds(context: Context): Int {
+        if (!isUnlocked(context)) return 0
+
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val unlockTimestamp = prefs.getLong(KEY_UNLOCK_TIMESTAMP, 0L)
-        
-        if (unlockTimestamp == 0L) {
-            return 0
-        }
-        
+        val grantedDuration = prefs.getLong(KEY_UNLOCK_DURATION_MS, AppConfig.UNLOCK_DURATION_MS)
         val elapsed = System.currentTimeMillis() - unlockTimestamp
-        val remaining = UNLOCK_DURATION_MS - elapsed
-        
-        return if (remaining > 0) {
-            (remaining / 1000).toInt()
-        } else {
-            0
-        }
+        val remaining = grantedDuration - elapsed
+
+        return if (remaining > 0) (remaining / 1000).toInt() else 0
     }
 
     /**
@@ -67,6 +69,7 @@ object UnlockManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit()
             .putLong(KEY_UNLOCK_TIMESTAMP, 0L)
+            .remove(KEY_UNLOCK_DURATION_MS)
             .apply()
     }
 

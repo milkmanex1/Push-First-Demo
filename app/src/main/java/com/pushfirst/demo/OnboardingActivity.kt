@@ -50,7 +50,7 @@ import android.graphics.BitmapFactory
 import android.media.SoundPool
 import coil.ImageLoader
 import coil.compose.AsyncImage
-import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import coil.request.ImageRequest
 import androidx.compose.foundation.Image
 import androidx.compose.ui.geometry.Offset
@@ -295,7 +295,7 @@ private fun OnboardingFlow(
             19 -> YourPlanScreen(
                 viewModel = viewModel,
                 onNext = { page = 20 },
-                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 18 }} else null
+                onBack = { page = 18 }
             )
             20 -> PaywallScreen(
                 monthlyPrice = monthlyPrice,
@@ -2222,7 +2222,7 @@ private fun HowItWorksChoiceScreen(onNext: () -> Unit, onBack: () -> Unit) {
     HowItWorksScreen(
         lottieAssetPath = "Onboarding/Sandy Loading.json",
         title = "Step 3 — Decide.",
-        body = "After your reps, you earn 15 minutes. By then, most urges are already gone. You did the work — now you decide.",
+        body = "After your reps, you earn 45 minutes. By then, most urges are already gone. You did the work — now you decide.",
         titleFontSize = 36.sp,
         onNext = onNext,
         onBack = onBack
@@ -2703,11 +2703,11 @@ private fun CameraTrialInstructionState(onContinue: () -> Unit, onBack: () -> Un
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(context)
-                        .data("file:///android_asset/Onboarding/PushupsFront.gif")
+                        .data("file:///android_asset/Onboarding/PushupsFront.webp")
                         .crossfade(false)
                         .build(),
                     imageLoader = remember {
-                        ImageLoader.Builder(context).components { add(GifDecoder.Factory()) }.build()
+                        ImageLoader.Builder(context).components { add(ImageDecoderDecoder.Factory()) }.build()
                     },
                     contentDescription = "Push-up demonstration",
                     contentScale = ContentScale.Fit,
@@ -2768,11 +2768,11 @@ private fun CameraTrialSetupState(onContinue: () -> Unit, onBack: () -> Unit) {
             ) {
                 AsyncImage(
                     model = ImageRequest.Builder(context)
-                        .data("file:///android_asset/Onboarding/placePhone.gif")
+                        .data("file:///android_asset/Onboarding/placePhone.webp")
                         .crossfade(false)
                         .build(),
                     imageLoader = remember {
-                        ImageLoader.Builder(context).components { add(GifDecoder.Factory()) }.build()
+                        ImageLoader.Builder(context).components { add(ImageDecoderDecoder.Factory()) }.build()
                     },
                     contentDescription = "Phone placement guide",
                     contentScale = ContentScale.Fit,
