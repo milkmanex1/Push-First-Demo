@@ -11,7 +11,7 @@ android {
         applicationId = "com.pushfirst.demo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 14
+        versionCode = 17
         versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -19,6 +19,7 @@ android {
             useSupportLibrary = true
         }
     }
+    
 
     buildTypes {
         release {
@@ -73,7 +74,7 @@ dependencies {
     implementation("androidx.camera:camera-view:${cameraxVersion}")
     
     // MediaPipe Pose for on-device pose detection
-    implementation("com.google.mediapipe:tasks-vision:0.10.8")
+    implementation("com.google.mediapipe:tasks-vision:0.10.26")
     
     // Google Play Billing
     implementation("com.android.billingclient:billing-ktx:7.1.1")

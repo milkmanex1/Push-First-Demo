@@ -22,6 +22,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.compose.animation.AnimatedContent
@@ -74,6 +75,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.Font
@@ -96,7 +98,7 @@ import com.pushfirst.demo.ui.theme.PushFirstTheme
 private const val PREFS_NAME = "pushfirst_prefs"
 private const val KEY_ONBOARDING_DONE = "onboarding_done"
 private const val KEY_SUBSCRIPTION_ACTIVE = "subscription_active"
-private const val TOTAL_ONBOARDING_PAGES = 27
+private const val TOTAL_ONBOARDING_PAGES = 32
 
 // ─── Onboarding answer store ─────────────────────────────────────────────────
 
@@ -112,6 +114,11 @@ class OnboardingViewModel {
     var feelingsAfter by mutableStateOf<List<String>>(emptyList())
     var goals by mutableStateOf<List<String>>(emptyList())
     var reminderTime by mutableStateOf("")
+    var arousalDifficulty by mutableStateOf("")
+    var pornCoping by mutableStateOf("")
+    var pornStress by mutableStateOf("")
+    var pornBoredom by mutableStateOf("")
+    var pornMoney by mutableStateOf("")
 }
 
 class OnboardingActivity : ComponentActivity() {
@@ -208,8 +215,8 @@ class OnboardingActivity : ComponentActivity() {
                 ) {
                     OnboardingFlow(
                         startPage = when {
-                            forcePaywall -> 20
-                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 20
+                            forcePaywall -> 25
+                            prefs.getBoolean(KEY_ONBOARDING_DONE, false) -> 25
                             else -> 0
                         },
                         monthlyPrice = monthlyPrice.value,
@@ -258,52 +265,58 @@ private fun OnboardingFlow(
     AnimatedContent(
         targetState = page,
         transitionSpec = {
+            val isQuizTransition = targetState in 2..14 || initialState in 2..14
+            val duration = if (isQuizTransition) 600 else 300
             if (targetState > initialState) {
-                (slideInHorizontally { it } + fadeIn()) togetherWith
-                        (slideOutHorizontally { -it } + fadeOut())
+                (slideInHorizontally(tween(duration)) { it } + fadeIn(tween(duration))) togetherWith
+                        (slideOutHorizontally(tween(duration)) { -it } + fadeOut(tween(duration)))
             } else {
-                (slideInHorizontally { -it } + fadeIn()) togetherWith
-                        (slideOutHorizontally { it } + fadeOut())
+                (slideInHorizontally(tween(duration)) { -it } + fadeIn(tween(duration))) togetherWith
+                        (slideOutHorizontally(tween(duration)) { it } + fadeOut(tween(duration)))
             }
         },
         label = "onboarding_page"
     ) { currentPage ->
         when (currentPage) {
-            0 -> SplashScreen(onNext = { page = 1 })
-            1 -> PreQuizScreen(onNext = { page = 2 }, onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 0 }} else null)
-            2 -> NameInputScreen(viewModel = viewModel, onNext = { page = 3 }, onBack = { page = 1 })
+            0 -> SplashScreen(onNext = { page = 2 })
+            2 -> NameInputScreen(viewModel = viewModel, onNext = { page = 3 }, onBack = { page = 0 })
             3 -> GenderScreen(viewModel = viewModel, onNext = { page = 4 }, onBack = { page = 2 })
             4 -> PornFrequencyScreen(viewModel = viewModel, onNext = { page = 5 }, onBack = { page = 3 })
             5 -> AgeFirstExposureScreen(viewModel = viewModel, onNext = { page = 6 }, onBack = { page = 4 })
             6 -> EscalationScreen(viewModel = viewModel, onNext = { page = 7 }, onBack = { page = 5 })
-            7 -> SymptomsScreen(viewModel = viewModel, onNext = { page = 8 }, onBack = { page = 6 })
-            8 -> FeelingsScreen(viewModel = viewModel, onNext = { page = 9 }, onBack = { page = 7 })
-            9 -> TriedToQuitScreen(viewModel = viewModel, onNext = { page = 10 }, onBack = { page = 8 })
-            10 -> EducationCarouselScreen(onNext = { page = 11 }, onBack = { page = 9 })
-            11 -> ScienceAgreeScreen(onNext = { page = 12 }, onBack = { page = 10 })
-            12 -> HowItWorksBlockScreen(onNext = { page = 13 }, onBack = { page = 11 })
-            13 -> HowItWorksPushScreen(onNext = { page = 14 }, onBack = { page = 12 })
-            14 -> HowItWorksChoiceScreen(onNext = { page = 15 }, onBack = { page = 13 })
-            15 -> RewiringBenefitsScreen(onNext = { page = 16 }, onBack = { page = 14 })
-            16 -> GoalsScreen(viewModel = viewModel, onNext = { page = 17 }, onBack = { page = 15 })
-            17 -> SocialProofScreen(onNext = { page = 18 }, onBack = { page = 16 })
-            18 -> CameraTrialScreen(
+            7 -> ArousalDifficultyScreen(viewModel = viewModel, onNext = { page = 8 }, onBack = { page = 6 })
+            8 -> PornCopingScreen(viewModel = viewModel, onNext = { page = 9 }, onBack = { page = 7 })
+            9 -> PornStressScreen(viewModel = viewModel, onNext = { page = 10 }, onBack = { page = 8 })
+            10 -> PornBoredomScreen(viewModel = viewModel, onNext = { page = 11 }, onBack = { page = 9 })
+            11 -> PornMoneyScreen(viewModel = viewModel, onNext = { page = 12 }, onBack = { page = 10 })
+            12 -> FeelingsScreen(viewModel = viewModel, onNext = { page = 13 }, onBack = { page = 11 })
+            13 -> TriedToQuitScreen(viewModel = viewModel, onNext = { page = 14 }, onBack = { page = 12 })
+            14 -> SymptomsScreen(viewModel = viewModel, onNext = { page = 15 }, onBack = { page = 13 })
+            15 -> EducationCarouselScreen(onNext = { page = 16 }, onBack = { page = 14 })
+            16 -> ScienceAgreeScreen(onNext = { page = 17 }, onBack = { page = 15 })
+            17 -> HowItWorksBlockScreen(onNext = { page = 18 }, onBack = { page = 16 })
+            18 -> HowItWorksPushScreen(onNext = { page = 19 }, onBack = { page = 17 })
+            19 -> HowItWorksChoiceScreen(onNext = { page = 20 }, onBack = { page = 18 })
+            20 -> RewiringBenefitsScreen(onNext = { page = 21 }, onBack = { page = 19 })
+            21 -> GoalsScreen(viewModel = viewModel, onNext = { page = 22 }, onBack = { page = 20 })
+            22 -> SocialProofScreen(onNext = { page = 23 }, onBack = { page = 21 })
+            23 -> CameraTrialScreen(
                 poseAnalyzer = poseAnalyzer,
-                onNext = { page = 19 },
-                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 17 }} else null
+                onNext = { page = 24 },
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 22 }} else null
             )
-            19 -> YourPlanScreen(
+            24 -> YourPlanScreen(
                 viewModel = viewModel,
-                onNext = { page = 20 },
-                onBack = { page = 18 }
+                onNext = { page = 25 },
+                onBack = { page = 23 }
             )
-            20 -> PaywallScreen(
+            25 -> PaywallScreen(
                 monthlyPrice = monthlyPrice,
                 yearlyTotal = yearlyTotal,
                 yearlyMonthly = yearlyMonthly,
                 onStartTrial = onStartTrial,
                 onRestore = onRestore,
-                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 19 }} else null
+                onBack = if (AppConfig.SHOW_DEV_BACK_ARROWS) {{ page = 24 }} else null
             )
         }
     }
@@ -471,115 +484,28 @@ private fun SplashScreen(onNext: () -> Unit) {
                         append("rep.")
                     }
                 },
-                modifier = Modifier.offset(y = 36.dp),
-                fontSize = 30.sp,
+                modifier = Modifier.offset(y = (-20).dp),
+                fontSize = 22.sp,
                 textAlign = TextAlign.Center,
-                lineHeight = 42.sp
+                lineHeight = 30.sp
             )
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Let's start by finding out if you have a problem with porn.",
+                    fontSize = 14.sp,
+                    color = Color.White.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
                 GradientButton(
-                    text = "Get Started  →",
+                    text = "Start Quiz",
                     onClick = onNext,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(48.dp))
-            }
-        }
-    }
-}
-
-// ─── Screen: Pre-Quiz ────────────────────────────────────────────────────────
-
-@Composable
-private fun PreQuizScreen(onNext: () -> Unit, onBack: (() -> Unit)? = null) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data("file:///android_asset/Onboarding/splash1.jpeg")
-                .build(),
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .align(Alignment.BottomCenter)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color(0xFF010510).copy(alpha = 0.85f),
-                            Color(0xFF010510)
-                        )
-                    )
-                )
-        )
-
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxSize()
-                .systemBarsPadding()
-                .padding(horizontal = 32.dp)
-        ) {
-            val screenHeight = maxHeight
-
-            if (onBack != null) {
-                Text(
-                    text = "←",
-                    fontSize = 24.sp,
-                    color = Color.White,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(top = 8.dp)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onBack() }
-                )
-            }
-
-            Text(
-                text = "Welcome.",
-                fontSize = 54.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = screenHeight * 0.10f)
-            )
-
-            Column(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = buildAnnotatedString {
-                        withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
-                            append("Let's find out if you have a problem with ")
-                        }
-                        withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
-                            append("porn")
-                        }
-                        withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.ExtraBold)) {
-                            append(".")
-                        }
-                    },
-                    fontSize = 29.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 42.sp,
-                    modifier = Modifier.padding(bottom = 88.dp)
-                )
-                GradientButton(
-                    text = "Start Quiz →",
-                    onClick = onNext,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 48.dp)
-                )
             }
         }
     }
@@ -613,10 +539,10 @@ private fun NameInputScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = "What should we\ncall you?",
-                        fontSize = 30.sp,
+                        fontSize = 27.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White,
-                        lineHeight = 38.sp
+                        lineHeight = 35.sp
                     )
                 }
 
@@ -679,100 +605,17 @@ private fun GenderScreen(
     onNext: () -> Unit,
     onBack: () -> Unit
 ) {
-    val options = listOf("Male", "Female", "Other")
-
-    StarryBackground {
-        Column(modifier = Modifier.fillMaxSize()) {
-            QuizTopBar(currentPage = 2, totalPages = TOTAL_ONBOARDING_PAGES, onBack = onBack)
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 28.dp),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column {
-                    Spacer(modifier = Modifier.height(28.dp))
-                    Text(
-                        text = "Tell us about yourself,",
-                        fontSize = 16.sp,
-                        color = Color(0xFF888888)
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "What's your gender?",
-                        fontSize = 30.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        lineHeight = 38.sp
-                    )
-                }
-
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    options.forEach { option ->
-                        val selected = viewModel.gender == option
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(58.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(
-                                    if (selected) Color(0xFF00D4FF).copy(alpha = 0.12f)
-                                    else Color(0xFF111122)
-                                )
-                                .border(
-                                    width = if (selected) 2.dp else 1.dp,
-                                    color = if (selected) Color(0xFF00D4FF) else Color(0xFF2A2A44),
-                                    shape = RoundedCornerShape(50)
-                                )
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = rememberRipple(color = Color(0xFF00D4FF))
-                                ) { viewModel.gender = option },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = option,
-                                fontSize = 16.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) Color(0xFF00D4FF) else Color.White
-                            )
-                        }
-                    }
-                }
-
-                Column(modifier = Modifier.navigationBarsPadding()) {
-                    val enabled = viewModel.gender.isNotBlank()
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(
-                                if (enabled)
-                                    Brush.horizontalGradient(listOf(Color(0xFF4B0082), Color(0xFF4169E1)))
-                                else
-                                    Brush.horizontalGradient(listOf(Color(0xFF2A2A2A), Color(0xFF333333)))
-                            )
-                            .clickable(
-                                enabled = enabled,
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = if (enabled) rememberRipple(color = Color.White) else null
-                            ) { if (enabled) onNext() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Continue",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (enabled) Color.White else Color(0xFF555555)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-            }
-        }
-    }
+    SingleSelectQuizScreen(
+        currentPage = 2,
+        subtext = "Tell us about yourself,",
+        question = "What's your gender?",
+        options = listOf("Male", "Female", "Other"),
+        selected = viewModel.gender,
+        onSelect = { viewModel.gender = it },
+        onNext = onNext,
+        onBack = onBack,
+        autoAdvance = true
+    )
 }
 
 // ─── Screen 1: Value Prop ───────────────────────────────────────────────────
@@ -1120,10 +963,10 @@ private fun SingleSelectQuizScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = question,
-                        fontSize = 28.sp,
+                        fontSize = 25.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White,
-                        lineHeight = 36.sp
+                        lineHeight = 33.sp
                     )
                 }
 
@@ -1151,7 +994,7 @@ private fun SingleSelectQuizScreen(
                                     onSelect(option)
                                     if (autoAdvance) {
                                         scope.launch {
-                                            kotlinx.coroutines.delay(300)
+                                            delay(300)
                                             onNext()
                                         }
                                     }
@@ -1267,7 +1110,7 @@ private fun EscalationScreen(
 
     SingleSelectQuizScreen(
         currentPage = 5,
-        subtext = "Be honest with yourself,",
+        subtext = "No judgment. Just facts.",
         question = "Have you noticed a shift toward more extreme or graphic material?",
         options = listOf("Yes", "No"),
         selected = localSelection,
@@ -1374,7 +1217,8 @@ private fun SymptomsScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = "Select any symptoms below:",
-                        fontSize = 16.sp,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
                         color = Color.White,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
@@ -1510,10 +1354,10 @@ private fun TriedToQuitScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = "What have you already tried to quit?",
-                        fontSize = 28.sp,
+                        fontSize = 25.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White,
-                        lineHeight = 36.sp
+                        lineHeight = 33.sp
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -1630,10 +1474,10 @@ private fun FeelingsScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = "How does watching porn make you feel afterward?",
-                        fontSize = 28.sp,
+                        fontSize = 25.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color.White,
-                        lineHeight = 36.sp
+                        lineHeight = 33.sp
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(text = "Choose up to 2", fontSize = 14.sp, color = Color(0xFF666688))
@@ -1806,13 +1650,90 @@ private fun EducationSlide(
     }
 }
 
+// ─── Screens: Extra Quiz Questions (pages 10–14) ─────────────────────────────
+
+@Composable
+private fun ArousalDifficultyScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBack: () -> Unit) {
+    SingleSelectQuizScreen(
+        currentPage = 10,
+        subtext = "This one matters.",
+        question = "Do you find it difficult to achieve sexual arousal without pornography or fantasy?",
+        options = listOf("Frequently", "Occasionally", "Rarely or never"),
+        selected = viewModel.arousalDifficulty,
+        onSelect = { viewModel.arousalDifficulty = it },
+        onNext = onNext,
+        onBack = onBack,
+        autoAdvance = true
+    )
+}
+
+@Composable
+private fun PornCopingScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBack: () -> Unit) {
+    SingleSelectQuizScreen(
+        currentPage = 11,
+        subtext = "",
+        question = "Do you use pornography as a way to cope with emotional discomfort or pain?",
+        options = listOf("Frequently", "Occasionally", "Rarely or never"),
+        selected = viewModel.pornCoping,
+        onSelect = { viewModel.pornCoping = it },
+        onNext = onNext,
+        onBack = onBack,
+        autoAdvance = true
+    )
+}
+
+@Composable
+private fun PornStressScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBack: () -> Unit) {
+    SingleSelectQuizScreen(
+        currentPage = 12,
+        subtext = "This is between you and yourself.",
+        question = "Do you turn to pornography when feeling stressed?",
+        options = listOf("Frequently", "Occasionally", "Rarely or never"),
+        selected = viewModel.pornStress,
+        onSelect = { viewModel.pornStress = it },
+        onNext = onNext,
+        onBack = onBack,
+        autoAdvance = true
+    )
+}
+
+@Composable
+private fun PornBoredomScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBack: () -> Unit) {
+    SingleSelectQuizScreen(
+        currentPage = 13,
+        subtext = "",
+        question = "Do you watch pornography out of boredom?",
+        options = listOf("Frequently", "Occasionally", "Rarely or never"),
+        selected = viewModel.pornBoredom,
+        onSelect = { viewModel.pornBoredom = it },
+        onNext = onNext,
+        onBack = onBack,
+        autoAdvance = true
+    )
+}
+
+@Composable
+private fun PornMoneyScreen(viewModel: OnboardingViewModel, onNext: () -> Unit, onBack: () -> Unit) {
+    SingleSelectQuizScreen(
+        currentPage = 14,
+        subtext = "",
+        question = "Have you ever spent money on accessing explicit content?",
+        options = listOf("Yes", "No"),
+        selected = viewModel.pornMoney,
+        onSelect = { viewModel.pornMoney = it },
+        onNext = onNext,
+        onBack = onBack,
+        autoAdvance = true
+    )
+}
+
 // ─── Screen: Education Carousel (pages 9–13 collapsed into swipeable pager) ──
 
 private data class SlideData(
     val bg: Color,
     val emoji: String,
     val title: String,
-    val body: String,
+    val body: AnnotatedString,
     val imageAssetPath: String? = null,
     val gradientBtn: Boolean = false
 )
@@ -1820,19 +1741,61 @@ private data class SlideData(
 private val EDUCATION_SLIDES = listOf(
     SlideData(Color(0xFFC91C21), "🧠", "Porn is a drug",
         imageAssetPath = "Onboarding/brain2.png",
-        body = "Using porn releases a chemical in the brain called dopamine. This chemical makes you feel good — it's why you feel pleasure when you watch porn."),
+        body = buildAnnotatedString {
+            append("Using porn releases a chemical in the brain called ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("dopamine") }
+            append(". This chemical makes you ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("feel good") }
+            append(" — it's why you feel pleasure when you ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("watch porn") }
+            append(".")
+        }),
     SlideData(Color(0xFFC91C21), "💔", "Porn destroys relationships",
         imageAssetPath = "Onboarding/heartbreak2.png",
-        body = "Porn reduces your hunger for a real relationship and replaces it with the hunger for more porn."),
+        body = buildAnnotatedString {
+            append("Porn ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("reduces") }
+            append(" your hunger for a ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("real relationship") }
+            append(" and replaces it with the hunger for more porn.")
+        }),
     SlideData(Color(0xFFC91C21), "⚡", "Porn shatters sex drive",
         imageAssetPath = "Onboarding/bed1.jpeg",
-        body = "More than 50% of porn addicts have reported a loss of interest in real sex, and an overall decrease in their sex drive."),
+        body = buildAnnotatedString {
+            append("More than 50% of porn addicts have reported a ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("loss of interest") }
+            append(" in ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("real sex") }
+            append(", and an overall ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("decrease") }
+            append(" in their ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("sex drive") }
+            append(".")
+        }),
     SlideData(Color(0xFFC91C21), "😔", "Feeling unhappy?",
         imageAssetPath = "Onboarding/sad.png",
-        body = "An elevated dopamine level means you need more dopamine to feel good. This is why so many heavy porn users report feeling depressed, unmotivated, and anti-social."),
-    SlideData(Color(0xFF0A1628), "🌱", "Path to Recovery",
+        body = buildAnnotatedString {
+            append("An ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("elevated dopamine level") }
+            append(" means you need more dopamine to feel good. This is why so many heavy porn users report feeling ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("depressed") }
+            append(", ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("unmotivated") }
+            append(", and ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("anti-social") }
+            append(".")
+        }),
+    SlideData(Color(0xFF1565C0), "🌱", "Path to Recovery",
         imageAssetPath = "Onboarding/plant1.png",
-        body = "Recovery is possible. By abstaining from porn, your brain can reset its dopamine sensitivity, leading to healthier relationships and improved well-being.",
+        body = buildAnnotatedString {
+            append("Recovery is possible. By ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("abstaining from porn") }
+            append(", your brain can reset its ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("dopamine sensitivity") }
+            append(", leading to healthier relationships and ")
+            withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Color.White)) { append("improved well-being") }
+            append(".")
+        },
         gradientBtn = true)
 )
 
@@ -1844,7 +1807,9 @@ private fun EducationCarouselScreen(onNext: () -> Unit, onBack: () -> Unit) {
     val currentSlide = EDUCATION_SLIDES[pagerState.currentPage]
     val flingBehavior = PagerDefaults.flingBehavior(
         state = pagerState,
-        pagerSnapDistance = PagerSnapDistance.atMost(EDUCATION_SLIDES.lastIndex)
+        pagerSnapDistance = PagerSnapDistance.atMost(EDUCATION_SLIDES.lastIndex),
+        snapAnimationSpec = tween(durationMillis = 800),
+        lowVelocityAnimationSpec = tween(durationMillis = 1000)
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -1977,6 +1942,22 @@ private fun EducationCarouselScreen(onNext: () -> Unit, onBack: () -> Unit) {
 
 @Composable
 private fun ScienceAgreeScreen(onNext: () -> Unit, onBack: () -> Unit) {
+    val alpha1 = remember { Animatable(0f) }
+    val alpha2 = remember { Animatable(0f) }
+    val alpha3 = remember { Animatable(0f) }
+    val alpha4 = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        delay(600)
+        alpha1.animateTo(1f, tween(800))
+        delay(500)
+        alpha2.animateTo(1f, tween(800))
+        delay(500)
+        alpha3.animateTo(1f, tween(800))
+        delay(500)
+        alpha4.animateTo(1f, tween(800))
+    }
+
     StarryBackground {
         Column(
             modifier = Modifier
@@ -2013,18 +1994,36 @@ private fun ScienceAgreeScreen(onNext: () -> Unit, onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(28.dp))
 
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(text = "We know that", fontSize = 26.sp, color = Color.White, textAlign = TextAlign.Center)
-                Text(text = "Quitting is hard.", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF6B00), textAlign = TextAlign.Center)
+                // Chunk 1
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.graphicsLayer { alpha = alpha1.value }
+                ) {
+                    Text(text = "We know that", fontSize = 26.sp, color = Color.White, textAlign = TextAlign.Center)
+                    Text(text = "Quitting is hard.", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFFF6B00), textAlign = TextAlign.Center)
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                Text(text = "Science agrees - the best method is to", fontSize = 20.sp, color = Color.White, textAlign = TextAlign.Center, lineHeight = 28.sp)
-                Text(text = "Replace.", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00D4FF), textAlign = TextAlign.Center)
+                // Chunk 2
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.graphicsLayer { alpha = alpha2.value }
+                ) {
+                    Text(text = "Science agrees - the best method is to", fontSize = 20.sp, color = Color.White, textAlign = TextAlign.Center, lineHeight = 28.sp)
+                    Text(text = "Replace.", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00D4FF), textAlign = TextAlign.Center)
+                }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                Text(text = "And what better replacement than", fontSize = 20.sp, color = Color.White, textAlign = TextAlign.Center, lineHeight = 28.sp)
-                Text(text = "Exercise?", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00D4FF), textAlign = TextAlign.Center)
+                // Chunk 3
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.graphicsLayer { alpha = alpha3.value }
+                ) {
+                    Text(text = "And what better replacement than", fontSize = 20.sp, color = Color.White, textAlign = TextAlign.Center, lineHeight = 28.sp)
+                    Text(text = "Exercise?", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00D4FF), textAlign = TextAlign.Center)
+                }
             }
 
             Spacer(modifier = Modifier.weight(1f))
@@ -2073,32 +2072,35 @@ private fun ScienceAgreeScreen(onNext: () -> Unit, onBack: () -> Unit) {
                 }
             }
 
-            ClickableText(
-                text = citationText,
-                style = androidx.compose.ui.text.TextStyle(textAlign = TextAlign.Center),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
-                onClick = { offset ->
-                    citationText.getStringAnnotations(tag = "URL", start = offset, end = offset)
-                        .firstOrNull()?.let { annotation ->
-                            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(annotation.item))
-                            context.startActivity(intent)
-                        }
-                }
-            )
+            // Chunk 4: citation + button
+            Column(modifier = Modifier.graphicsLayer { alpha = alpha4.value }) {
+                ClickableText(
+                    text = citationText,
+                    style = androidx.compose.ui.text.TextStyle(textAlign = TextAlign.Center),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                    onClick = { offset ->
+                        citationText.getStringAnnotations(tag = "URL", start = offset, end = offset)
+                            .firstOrNull()?.let { annotation ->
+                                val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse(annotation.item))
+                                context.startActivity(intent)
+                            }
+                    }
+                )
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth().height(56.dp)
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.White)
-                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.Black)) { onNext() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "See How PushFirst Works", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth().height(56.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(Color.White)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = rememberRipple(color = Color.Black)) { onNext() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "See How PushFirst Works", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                }
+                Spacer(modifier = Modifier.height(32.dp))
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -2110,7 +2112,7 @@ private fun HowItWorksScreen(
     lottieAssetPath: String,
     title: String,
     body: String,
-    titleFontSize: TextUnit = 42.sp,
+    titleFontSize: TextUnit = 32.sp,
     onNext: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -2156,7 +2158,7 @@ private fun HowItWorksScreen(
 
             Text(text = title, fontSize = titleFontSize, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00D4FF), textAlign = TextAlign.Center)
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
             if (bodySentences.size > 1) {
                 Column(
@@ -2200,7 +2202,7 @@ private fun HowItWorksBlockScreen(onNext: () -> Unit, onBack: () -> Unit) {
     HowItWorksScreen(
         lottieAssetPath = "Onboarding/Simple Rejected Animation.json",
         title = "Step 1 — Block.",
-        body = "The moment you visit an adult site, PushFirst steps in. The urge gets intercepted before it wins.",
+        body = "The moment you visit an adult site, PushFirst steps in. Urge intercepted.",
         onNext = onNext,
         onBack = onBack
     )
