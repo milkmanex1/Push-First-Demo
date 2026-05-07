@@ -123,7 +123,7 @@ class OnboardingViewModel {
 
 class OnboardingActivity : ComponentActivity() {
 
-    private val SKIP_ONBOARDING_FOR_DEV = false
+    private val SKIP_ONBOARDING_FOR_DEV = AppConfig.SKIP_ONBOARDING_FOR_DEV
     private lateinit var billingManager: BillingManager
     private var onboardingPoseAnalyzer: PoseAnalyzer? = null
     private val cameraExecutorForOnboarding = lazy { Executors.newSingleThreadExecutor() }

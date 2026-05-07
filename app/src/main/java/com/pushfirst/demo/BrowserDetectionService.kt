@@ -40,6 +40,7 @@ class BrowserDetectionService : AccessibilityService() {
     private var bypassExpiryCheckScheduled = false
 
     private val blockedDomains: MutableSet<String> = mutableSetOf()
+    private val blockedBaseDomains: MutableSet<String> = mutableSetOf()
     private var domainsLoaded = false
 
     // Core polling loop — checks URL every 500ms.
@@ -85,7 +86,7 @@ class BrowserDetectionService : AccessibilityService() {
     companion object {
         private const val TAG = "BrowserDetectionService"
 
-        private const val SEARCH_PHRASE_DEMO_ENABLED = false
+        private val SEARCH_PHRASE_DEMO_ENABLED = AppConfig.SEARCH_PHRASE_DEMO_ENABLED
         private const val SEARCH_PHRASE_DEMO_TRIGGER = "premium corn videos 4k"
         private const val SEARCH_PHRASE_DEMO_FAKE_DOMAIN = "cornhub.website"
         private const val SEARCH_PHRASE_TRIGGER_COOLDOWN_MS = 10_000L
@@ -204,7 +205,6 @@ class BrowserDetectionService : AccessibilityService() {
             }
 
             val url = extractUrlFromViewHierarchy(rootNode)
-            Log.d(TAG, "checkCurrentUrl: extracted URL = $url")
 
             if (url != null && (url.contains("google.com") || url.contains("google.") || url == "google")) {
                 lastGooglePageTime = System.currentTimeMillis()
@@ -259,7 +259,8 @@ class BrowserDetectionService : AccessibilityService() {
             "com.brave.browser",
             "com.opera.browser",
             "org.mozilla.firefox",
-            "com.samsung.android.sbrowser"
+            "com.samsung.android.sbrowser",
+            "com.sec.android.app.sbrowser"
         )
         return browserPackages.any { packageName.contains(it, ignoreCase = true) }
     }
@@ -287,6 +288,9 @@ class BrowserDetectionService : AccessibilityService() {
             collectEditTextNodes(rootNode, editTextNodes)
 
             for (node in editTextNodes) {
+                // Force the node to pull the latest data from the live view.
+                // Without this, Samsung Internet returns a stale cached URL.
+                try { node.refresh() } catch (_: Exception) {}
                 val text = node.text?.toString() ?: ""
                 val contentDesc = node.contentDescription?.toString() ?: ""
                 Log.d(TAG, "Checking EditText node - focused: ${node.isFocused}, text: $text, contentDesc: $contentDesc")
@@ -368,7 +372,7 @@ class BrowserDetectionService : AccessibilityService() {
      * Recursively collect address-bar-like nodes from the view hierarchy.
      * Strict criteria to avoid false positives from search results and link previews.
      */
-    private fun collectEditTextNodes(node: AccessibilityNodeInfo, result: MutableList<AccessibilityNodeInfo>) {
+private fun collectEditTextNodes(node: AccessibilityNodeInfo, result: MutableList<AccessibilityNodeInfo>) {
         val className = node.className?.toString() ?: ""
         val contentDesc = node.contentDescription?.toString() ?: ""
 
@@ -377,7 +381,11 @@ class BrowserDetectionService : AccessibilityService() {
             className.contains("UrlBar", ignoreCase = true) ||
             className.contains("LocationBar", ignoreCase = true) ||
             contentDesc.contains("address bar", ignoreCase = true) ||
-            contentDesc.contains("url bar", ignoreCase = true)
+            contentDesc.contains("url bar", ignoreCase = true) ||
+            contentDesc.contains("search or enter address", ignoreCase = true) ||
+            contentDesc.contains("enter address", ignoreCase = true) ||
+            contentDesc.contains("search or enter web address", ignoreCase = true) ||
+            contentDesc.contains("address field", ignoreCase = true)
 
         if (isAddressBarLike) {
             result.add(AccessibilityNodeInfo.obtain(node))
@@ -430,6 +438,11 @@ class BrowserDetectionService : AccessibilityService() {
                     val normalizedDomain = domain.trim().lowercase()
                     if (normalizedDomain.isNotEmpty()) {
                         blockedDomains.add(normalizedDomain)
+                        // Also store the base name (before first dot) for browsers that
+                        // abbreviate URLs by stripping the TLD (e.g. Samsung Internet showing
+                        // "fuq" instead of "fuq.com")
+                        val base = normalizedDomain.substringBefore(".")
+                        if (base.length >= 2) blockedBaseDomains.add(base)
                         count++
                     }
                 }
@@ -474,6 +487,11 @@ class BrowserDetectionService : AccessibilityService() {
                     return true
                 }
             }
+        }
+        // Handle browsers that strip the TLD and show only the base name (e.g. "fuq" for fuq.com)
+        if (!hostWithoutWww.contains(".") && blockedBaseDomains.contains(hostWithoutWww)) {
+            Log.d(TAG, "✅ Base domain match: $hostWithoutWww")
+            return true
         }
         Log.d(TAG, "❌ Domain not blocked: $hostWithoutWww (checked ${blockedDomains.size} domains)")
         return false
