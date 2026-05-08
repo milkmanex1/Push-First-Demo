@@ -33,6 +33,8 @@ import androidx.core.view.WindowCompat
 import com.pushfirst.demo.ui.theme.PushFirstTheme
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 
 /**
  * CONTROL REGAINED ACTIVITY
@@ -168,6 +170,32 @@ fun ControlRegainedScreen(
         }
     }
     
+    var phase by remember { mutableStateOf(0) }
+    val titleAlpha by animateFloatAsState(
+        targetValue = if (phase >= 1) 1f else 0f,
+        animationSpec = tween(1200),
+        label = "titleAlpha"
+    )
+    val subtitleAlpha by animateFloatAsState(
+        targetValue = if (phase >= 2) 1f else 0f,
+        animationSpec = tween(1200),
+        label = "subtitleAlpha"
+    )
+    val buttonAlpha by animateFloatAsState(
+        targetValue = if (phase >= 3) 1f else 0f,
+        animationSpec = tween(1200),
+        label = "buttonAlpha"
+    )
+
+    LaunchedEffect(Unit) {
+        delay(300)
+        phase = 1
+        delay(900)
+        phase = 2
+        delay(900)
+        phase = 3
+    }
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenHeight = maxHeight
         val isStoic = AppConfig.Is_Stoic
@@ -235,16 +263,18 @@ fun ControlRegainedScreen(
                     fontSize = 47.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.graphicsLayer(alpha = titleAlpha)
                 )
                 Text(
                     text = "The urge lost. You didn't.",
                     fontSize = 23.sp,
                     color = Color(0xFFAAAAAA),
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.graphicsLayer(alpha = subtitleAlpha)
                 )
             }
-            
+
             // Done button - positioned at bottom 10% of screen (moved up ~5% from previous)
             val doneInteractionSource = remember { MutableInteractionSource() }
             val isDonePressed by doneInteractionSource.collectIsPressedAsState()
@@ -260,11 +290,11 @@ fun ControlRegainedScreen(
             ) {
                 Box(
                     modifier = Modifier
+                        .graphicsLayer(alpha = buttonAlpha * (if (isDonePressed) 0.6f else 1.0f))
                         .fillMaxWidth()
                         .background(Color(0x66000000), RoundedCornerShape(20.dp)) // subtle grey/black translucent background
                         .border(1.dp, Color(0xFF999999), RoundedCornerShape(20.dp))
-                        .graphicsLayer(alpha = if (isDonePressed) 0.6f else 1.0f)
-                        .clickable(interactionSource = doneInteractionSource, indication = rememberRipple()) { onBriefDisplayComplete() }
+                        .clickable(interactionSource = doneInteractionSource, indication = rememberRipple(), enabled = phase >= 3) { onBriefDisplayComplete() }
                         .padding(horizontal = 32.dp, vertical = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -291,13 +321,15 @@ fun ControlRegainedScreen(
                     fontSize = 47.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.graphicsLayer(alpha = titleAlpha)
                 )
                 Text(
                     text = "The urge lost. You didn't.",
                     fontSize = 23.sp,
                     color = Color(0xFFAAAAAA),
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.graphicsLayer(alpha = subtitleAlpha)
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -307,11 +339,11 @@ fun ControlRegainedScreen(
                 val isDonePressed by doneInteractionSource.collectIsPressedAsState()
                 Box(
                     modifier = Modifier
+                        .graphicsLayer(alpha = buttonAlpha * (if (isDonePressed) 0.6f else 1.0f))
                         .fillMaxWidth()
                         .background(Color(0x66000000), RoundedCornerShape(20.dp)) // subtle grey/black translucent background
                         .border(1.dp, Color(0xFF999999), RoundedCornerShape(20.dp))
-                        .graphicsLayer(alpha = if (isDonePressed) 0.6f else 1.0f)
-                        .clickable(interactionSource = doneInteractionSource, indication = rememberRipple()) { onBriefDisplayComplete() }
+                        .clickable(interactionSource = doneInteractionSource, indication = rememberRipple(), enabled = phase >= 3) { onBriefDisplayComplete() }
                         .padding(horizontal = 32.dp, vertical = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {

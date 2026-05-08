@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
         )
 
         billingManager.connect(onReady = {
+            if (AppConfig.SKIP_ONBOARDING_FOR_DEV) return@connect
             lifecycleScope.launch {
                 val isSubscribed = billingManager.checkSubscriptionStatus()
                 Log.d("BILLING_DEBUG", "MainActivity subscription check — isSubscribed=$isSubscribed")
