@@ -130,12 +130,12 @@ class BillingManager(
 
     // ── Purchase flow ─────────────────────────────────────────────────────────
 
-    fun launchPurchaseFlow(activity: Activity, basePlanId: String) {
+    fun launchPurchaseFlow(activity: Activity, basePlanId: String, offerId: String? = null) {
         Log.d(TAG, "launchPurchaseFlow — basePlan=$basePlanId")
 
         if (!billingClient.isReady) {
             Log.e(TAG, "BillingClient not ready — reconnecting…")
-            connect(onReady = { launchPurchaseFlow(activity, basePlanId) })
+            connect(onReady = { launchPurchaseFlow(activity, basePlanId, offerId) })
             return
         }
 
@@ -147,7 +147,10 @@ class BillingManager(
         }
 
         val offerToken = productDetails.subscriptionOfferDetails
-            ?.firstOrNull { it.basePlanId == basePlanId }
+            ?.firstOrNull { offer ->
+                offer.basePlanId == basePlanId &&
+                (offerId == null || offer.offerId == offerId)
+            }
             ?.offerToken
 
         if (offerToken == null) {

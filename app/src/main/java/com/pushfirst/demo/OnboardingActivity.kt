@@ -224,7 +224,8 @@ class OnboardingActivity : ComponentActivity() {
                         yearlyMonthly = yearlyMonthly.value,
                         poseAnalyzer = onboardingPoseAnalyzer,
                         onStartTrial = { planId ->
-                            billingManager.launchPurchaseFlow(this@OnboardingActivity, planId)
+                            val offerId = if (planId == BASE_PLAN_YEARLY) "free-trial-7day" else null
+                            billingManager.launchPurchaseFlow(this@OnboardingActivity, planId, offerId)
                         },
                         onRestore = {
                             billingManager.restorePurchases()
